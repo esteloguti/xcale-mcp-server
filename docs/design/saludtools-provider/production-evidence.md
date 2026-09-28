@@ -311,6 +311,44 @@ Three fixtures were recorded from this run — `observed-patientDuplicate412.jso
 `observed-patientUpdated200.json`, `observed-patientDeleted200.json` — and the first two are the only
 tests in the module that exercise a write refusal and an update at all.
 
+## The three environments, measured — 2026-09-28
+
+Mateo asked the reasonable question (2026-09-28): the developer portal has an environment switcher,
+`Prueba` points at `saludtools.qa.carecloud.com.co`, so why not just use the test endpoints with the
+key we already have? A note from 09-21 said QA rejects that key. Notes go stale, and this one carried
+a whole blocker, so it was re-run rather than quoted.
+
+One auth call per host, same credential:
+
+| Environment     | Host                              | Answer                                                               |
+| --------------- | --------------------------------- | -------------------------------------------------------------------- |
+| **Producción**  | `saludtools.carecloud.com.co`     | `200` — token minted, `expires_in` 518399 (~6 days)                  |
+| **Prueba (QA)** | `saludtools.qa.carecloud.com.co`  | `412` — **its database is down** (raw Hibernate error, quoted below) |
+| **Dev**         | `saludtools.dev.carecloud.com.co` | **Unreachable** — TCP connection times out                           |
+
+```
+412  "Could not open JPA EntityManager for transaction; nested exception is
+      org.hibernate.exception.GenericJDBCException: Unable to acquire JDBC Connection"
+```
+
+**This retires the claim that QA rejects our key.** On 09-21 QA answered `412 "La llave es invalida
+para generar el token"` — a statement about the credential. Today it fails before it can look a
+credential up, and it would fail identically for a perfectly valid key. So the question is **open**,
+not answered, and Mateo may turn out to be right that the test environment is all we need — once it
+is running.
+
+Two things follow:
+
+- **Re-test when QA is up.** If it accepts the clinic's key, the sandbox stops being a blocker for
+  everything except the clinical phases' data.
+- **The sandbox request still stands on its other leg**, which never depended on this: the only key we
+  hold is a live clinic's, carrying `role_admin`, and that is not what an integration's test suite
+  should run against. Worth adding to the thread already open with CareCloud: **their QA environment
+  is returning a raw Hibernate stack message to callers** — a bug, and a leak of internal detail.
+
+Also worth noting for anyone reading the environment table: **`dev` was never more than a variable in
+the vendor's Postman collection**, and it does not answer at all. Treat it as not existing.
+
 ## The clinical surfaces, probed read-only — 2026-09-24
 
 Ten `READ` calls, one per clinical event type, each bound to a document that **cannot exist**
@@ -331,53 +369,72 @@ surfaces a question in a grammar this API does not use.
 
 A second pass asked again, at the root. Both together:
 
-| Event type            | `{search: {documentType, documentNumber}}` | `{documentType, documentNumber}` (root) |
-| --------------------- | ------------------------------------------ | --------------------------------------- |
-| `MEDICINE`            | **accepted** — "No existe paciente…"       | malformed                               |
-| `EXAMS_RESULTS`       | malformed                                  | **`402 "Se esperaba un id"`**           |
-| `INABILITYWORK`       | malformed                                  | **`402 "Se esperaba un id"`**           |
-| `CLINIC_HISTORY`      | malformed                                  | malformed                               |
-| `EXAMS_PRESCRIPTION`  | malformed                                  | malformed                               |
-| `PARACLINICS`         | malformed                                  | malformed                               |
-| `PATIENT_FILES`       | malformed                                  | not run — throttled out                 |
-| `GYNECOOBS_HISTORY`   | malformed                                  | not run — throttled out                 |
-| `FAMILY_HISTORY`      | malformed                                  | not run — throttled out                 |
-| `ANTECEDENT_PERSONAL` | malformed                                  | not run — throttled out                 |
+| Event type            | `{search: {doc}}` | `{doc}` at root                       | `SEARCH` by `{doc}` + pageable |
+| --------------------- | ----------------- | ------------------------------------- | ------------------------------ |
+| `MEDICINE`            | **accepted**      | malformed                             | malformed                      |
+| `GYNECOOBS_HISTORY`   | malformed         | **accepted**                          | not asked                      |
+| `FAMILY_HISTORY`      | malformed         | **accepted**                          | **accepted**                   |
+| `EXAMS_RESULTS`       | malformed         | `402 "Se esperaba un id"`             | **accepted**                   |
+| `INABILITYWORK`       | malformed         | `402 "Se esperaba un id"`             | not asked                      |
+| `PATIENT_FILES`       | malformed         | `402 "Se esperaba un id"`             | not asked                      |
+| `ANTECEDENT_PERSONAL` | malformed         | `412 "El evento read requiere en id"` | not asked                      |
+| `CLINIC_HISTORY`      | malformed         | malformed                             | malformed                      |
+| `EXAMS_PRESCRIPTION`  | malformed         | malformed                             | not asked                      |
+| `PARACLINICS`         | malformed         | malformed                             | not asked                      |
 
-The run was stopped with four surfaces unasked, deliberately: the quota is shared with the clinic's
-own systems, and there is a point past which probing a customer's production integration is taking
-something that is not ours.
+"Accepted" means the call got **past body validation** and failed on the lookup — the impossible
+document, reported as `412 "No existe paciente con ese tipo y numero de documentacion en la compañia"`.
+That is the answer we were looking for: the grammar was understood.
 
-### What the two passes settle
+### What this settles
 
-- **`MEDICINE` is reachable from a patient document**, through the nested read-last body. It is the
-  one clinical surface a conversation can address with what it holds.
-- **`EXAMS_RESULTS` and `INABILITYWORK` read by record id**, and say so in as many words. They are
-  the reason `402` is now classified as a caller-fixable input error rather than a provider
-  malfunction (see `errors.ts`).
-- **Four surfaces reject both shapes** and their grammar is still unknown.
-- **"No clinical data" is a `412` with a message, not a `200` with `body: null`.** For a patient who
-  exists and has no prescriptions, `MEDICINE/READ` answers `412 "No se ha encontrado una prescripcion
-en nuestra base de datos con los valores de búsqueda ingresados."` That is a **different** structure
-  from the patient read, where absence is a success with an empty body — so phase 3 cannot reuse
-  `isRecordAbsent` and needs its own absence predicate per surface. `errors.ts` now says so at the
-  predicate itself, where someone would otherwise reach for it.
-- **A sixth wording for "no such patient"**: `MEDICINE` says _"No existe paciente con ese tipo y numero
-  de documentacion en la compañia"_. Deliberately **not** added to `isPatientNotFound` — on a clinical
-  read the agent already has a patient it found, so an unknown document there is a genuine
-  caller-fixable error. Six distinct sentences for one condition is why the structural signal leads
-  and prose-matching is only ever the fallback.
+**Phase 3 is reachable after all.** Four of the ten surfaces can be addressed from what a conversation
+actually holds — a patient's document:
 
-### The question this leaves for phase 3
+| Reachable from a document | How                                   |
+| ------------------------- | ------------------------------------- |
+| `MEDICINE`                | `READ` with the nested read-last body |
+| `GYNECOOBS_HISTORY`       | `READ` with the document at the root  |
+| `FAMILY_HISTORY`          | `READ` at the root, **and** `SEARCH`  |
+| `EXAMS_RESULTS`           | `SEARCH` → record ids → `READ` by id  |
 
-**Where does an agent get a clinical record id?** It has a patient, not ids, and nothing observed
-hands one out — the same gap as the missing doctor directory, one layer down.
+`EXAMS_RESULTS` is the one that matters most, because it proves the **search-then-read** path the
+earlier notes only hypothesised: a clinical search does filter by patient, so record ids are
+discoverable rather than conjured. Three surfaces (`INABILITYWORK`, `PATIENT_FILES`,
+`ANTECEDENT_PERSONAL`) read by id and their own search was not asked — likely the same path, untested.
+Three (`CLINIC_HISTORY`, `EXAMS_PRESCRIPTION`, `PARACLINICS`) reject every shape tried and remain
+unknown.
 
-The likely answer is already in the collection: `EXAMS_RESULTS` and `FAMILY_HISTORY` document a
-**`SEARCH`** action, and `APPOINTMENT/SEARCH` is the most useful read in the whole API. If the
-clinical searches filter by patient the way the appointment search does, that is the path — read by
-search, then by id. **Untested**, and testing it costs several calls on a throttled shared key, so it
-waits for the sandbox (#1057) rather than being designed around.
+**"An id is required" arrives two different ways.** `402 "Se esperaba un id"` on three surfaces,
+`412 "El evento read requiere en id"` on a fourth — two statuses and two sentences (with the vendor's
+own typo) for one condition. Both already classify as `PROVIDER_INVALID_INPUT`, so the adapter handles
+it, but it is a good illustration of why this provider gets its own classifier rather than the shared
+map.
+
+### The field names exist after all — in the documentation
+
+The portal documents the attribute table of every clinical entity (`/clinicHistory`, `/medicine`,
+`/examsResults`, …): names, types and examples. `CLINIC_HISTORY` alone declares ~80 vital-sign fields
+plus diagnostics, physical examination and system review.
+
+That changes what blocks phase 3's projections. The earlier reading was "no field names, so no
+allow-list, so nothing to build". In fact **an allow-list is the one artifact that can safely be built
+from imperfect documentation**: if the docs omit a field, the projection omits it too, and the failure
+is a missing value rather than a leak. This provider's documentation has been wrong at least seven
+times, and every one of those errors would land on the safe side of a projection.
+
+**So D6 is satisfiable now.** What still gates phase 3 is not the shape — it is
+[#1055](https://github.com/matesjara/xcale-backend/issues/1055), and the grill's own words: Q6 must be
+answered _before phase 3 is written_, not before it is shipped. That decision stands until Mateo moves
+it; this note records that the technical obstacle behind it is gone.
+
+### The webhook payload is genuinely undocumented — confirmed, not assumed
+
+`/webhook` documents **twelve UI steps** for switching events on inside the clinic's SaludTools, and
+**not one word about what arrives**. No payload, no example, no field list, no headers, no signature.
+Phase 5 ([#1060](https://github.com/matesjara/xcale-backend/issues/1060)) is blocked on a fact rather
+than on an unchecked assumption, and no amount of reading will unblock it — only a delivery observed
+against a real endpoint will.
 
 ### The third write cycle, and how the clinic was checked afterwards
 

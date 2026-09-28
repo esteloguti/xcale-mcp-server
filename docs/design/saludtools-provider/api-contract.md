@@ -32,11 +32,26 @@
 
 ### A.1 Base + transport
 
-| Environment | Host                                      | Status                                                           |
-| ----------- | ----------------------------------------- | ---------------------------------------------------------------- |
-| Production  | `https://saludtools.carecloud.com.co`     | Observed                                                         |
-| QA          | `https://saludtools.qa.carecloud.com.co`  | **Rejects our production key** (`412`); needs its own credential |
-| Dev         | `https://saludtools.dev.carecloud.com.co` | _Documented-only_ (collection variable)                          |
+| Environment | Host                                      | Status (re-measured 2026-09-28)                                             |
+| ----------- | ----------------------------------------- | --------------------------------------------------------------------------- |
+| Production  | `https://saludtools.carecloud.com.co`     | Observed — mints, `expires_in` 518399                                       |
+| QA          | `https://saludtools.qa.carecloud.com.co`  | **Reachable but broken** — its own database is down (see below)             |
+| Dev         | `https://saludtools.dev.carecloud.com.co` | **Unreachable** — connection times out; documented only as a collection var |
+
+**QA cannot currently answer whether it would accept our key, and the earlier claim that it
+_rejects_ it no longer stands on today's evidence.** On 2026-09-21 it answered
+`412 "La llave es invalida para generar el token"` — a message about the credential. On 2026-09-28 the
+same call answers
+
+```
+412  "Could not open JPA EntityManager for transaction; nested exception is
+      org.hibernate.exception.GenericJDBCException: Unable to acquire JDBC Connection"
+```
+
+which is SaludTools' own Hibernate layer failing to reach its database. That is an outage, not a
+rejection, and it would look the same whether the key was valid or not — the request never gets as far
+as looking one up. So the honest state is **unknown**, not "needs its own credential", and it is worth
+re-testing whenever QA is back up. Both observations are recorded in `production-evidence.md`.
 
 **One host serves every clinic**, so the environment is a deployment choice and nothing else. The
 provider reads `SALUDTOOLS_BASE_URL` (optional; unset = production) — set it to the QA host in Doppler

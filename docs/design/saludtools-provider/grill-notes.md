@@ -314,11 +314,20 @@ Errors — the provider misreports twice, and `errors.ts` has to know both:
 > any read of a real patient: the key is production and Q6 is still Mateo's. Verification stayed to
 > calls that touch nobody — the mint, the catalogs, an empty agenda window, and error probes.
 
-- **Q1 — ANSWERED (2026-09-21). A production key, not a sandbox.** It mints on
-  `saludtools.carecloud.com.co`; **QA rejects it** (`412`, "La llave es invalida para generar el
-  token"), so `saludtools.qa.carecloud.com.co` needs its own credential and the sandbox request
-  (`sandbox-access-request.md`) is **still worth sending** — arguably more so now, because the only key
-  we hold is a live clinic's with admin scope.
+- **Q1 — RE-OPENED (2026-09-28), after being answered on 09-21.** The key mints on
+  `saludtools.carecloud.com.co`. What QA does with it is **no longer known**.
+  - On **09-21** QA answered `412 "La llave es invalida para generar el token"` — about the credential,
+    which is what "QA needs its own key" was built on.
+  - On **09-28** the same call answers `412 "Could not open JPA EntityManager for transaction … Unable
+to acquire JDBC Connection"` — **SaludTools' QA database is down**. That is an outage, and it would
+    answer the same way for a valid key, so it proves nothing either way. `saludtools.dev.carecloud.com.co`
+    does not respond at all (connection timeout).
+  - So the honest state is **unknown**, and Mateo's instinct (2026-09-28: "usa los endpoints de prueba y
+    sale") may well be right once QA is up. Re-test then. The sandbox request stays worth sending on its
+    other ground, which does not depend on this: **the only key we hold is a live clinic's with
+    `role_admin`**, and that is not what an integration's test suite should run against.
+  - Worth telling CareCloud in the thread already open: their QA environment is returning a raw
+    Hibernate error to callers, which is both a bug and a leak of internal stack detail.
   - The JWT's `client_id` names the tenant and its `scope` is `role_admin` + `role_superadmin`. **There
     is no read-only scope on offer**, so the credential a clinic hands us can do anything its staff can.
     That is an argument for the control-plane withdrawals (D5) carrying real weight rather than being
