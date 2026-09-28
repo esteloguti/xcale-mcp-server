@@ -1,0 +1,40 @@
+import type { RequestSpec } from '../../core/auth/http-request';
+import type { RequestResult } from '../../core/http';
+import type { ErbonContext } from './context';
+
+/** Erbon production API base. Sandbox uses the same host with test credentials (Observed). */
+const DEFAULT_BASE_URL = 'https://api.erbonsoftware.com';
+
+/** Executes an authenticated request; the core reveals the minted JWT and applies `Bearer`. */
+export type AuthedRequest = (spec: RequestSpec) => Promise<RequestResult>;
+
+export interface ErbonClientDeps {
+  readonly baseUrl?: string;
+}
+
+export interface ErbonClient {
+  /**
+   * GET `${baseUrl}/hotel/{hotelID}[/path]`. Erbon takes its filter params (dates, idRate, …) in
+   * request HEADERS, not the query string — so callers pass them via `headers`, not a query map. The
+   * credential is NOT here: the core materializer appends `Authorization: bearer <jwt>`.
+   */
+  get(
+    path: string,
+    request: AuthedRequest,
+    ctx: ErbonContext,
+    headers?: Readonly<Record<string, string>>,
+  ): Promise<RequestResult>;
+}
+
+export function createErbonClient(deps: ErbonClientDeps = {}): ErbonClient {
+  const baseUrl = (deps.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, '');
+
+  return {
+    get: (path, request, ctx, headers) =>
+      request({
+        method: 'GET',
+        url: `${baseUrl}/hotel/${encodeURIComponent(ctx.hotelID)}${path ? `/${path}` : ''}`,
+        ...(headers ? { headers } : {}),
+      }),
+  };
+}
