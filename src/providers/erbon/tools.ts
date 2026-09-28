@@ -79,5 +79,35 @@ export function buildErbonTools(
       handler: async (_args, ctx) =>
         unwrapErbon(await client.get('', ctx.request, ctx.metadata), 'get hotel'),
     }),
+    tool({
+      // BACKEND-ONLY (AD-2, the money guard): `controlPlane: true` keeps this OUT of `listTools()` — the
+      // agent's menu — while it stays in `routableToolNames()`, callable by the backend. It is the only
+      // Erbon read that returns money; the backend `erbon-stay-truth` adapter consumes it to compose a
+      // tax-correct StayQuote. Off the menu, the agent can never narrate a raw, pre-tax price.
+      name: `mcp_${SLUG}_get_rate_prices`,
+      description:
+        'BACKEND-ONLY (withdrawn from the agent menu). Rate prices for one rate + room type over a date ' +
+        'range at the connected Erbon hotel. Consumed by the backend to compose a tax-correct quote — ' +
+        'the agent never narrates a raw price. Returns a flat array (verbatim); params travel in headers.',
+      controlPlane: true,
+      input: z
+        .object({
+          dateFrom: isoDate,
+          dateTo: isoDate,
+          idRate: z.number().int().positive(),
+          idRoomType: z.number().int().positive(),
+        })
+        .strict(),
+      handler: async (args, ctx) =>
+        unwrapErbon(
+          await client.get('mapping/rateprices', ctx.request, ctx.metadata, {
+            dateFrom: args.dateFrom,
+            dateTo: args.dateTo,
+            idRate: String(args.idRate),
+            idRoomType: String(args.idRoomType),
+          }),
+          'get rate prices',
+        ),
+    }),
   ];
 }

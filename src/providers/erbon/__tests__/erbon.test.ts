@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { ProviderErrorCode } from '../../../core/errors';
+import { runProviderConformance } from '../../../core/testing/provider-conformance';
 import type { ProviderCallContext } from '../../../core/types';
 import { SecretString } from '../../../core/secret-string';
 import { createErbonProvider, erbonProvider } from '../provider';
@@ -175,5 +176,86 @@ describe('erbon provider — S2 menu reads', () => {
     const res = await provider.callTool('mcp_erbon_list_rates', {}, ctx);
     expect(res.kind).toBe('error');
     if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.AUTH_EXPIRED);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S3 — the money guard (get_rate_prices is backend-only)
+// ---------------------------------------------------------------------------
+
+describe('erbon provider — S3 money guard', () => {
+  it('keeps get_rate_prices OFF the agent menu but routable by the backend', () => {
+    const menu = erbonProvider.listTools().map((t) => t.name);
+    expect(menu).not.toContain('mcp_erbon_get_rate_prices');
+    expect(erbonProvider.routableToolNames()).toContain('mcp_erbon_get_rate_prices');
+  });
+
+  it('get_rate_prices reads mapping/rateprices with dates + ids in headers, verbatim', async () => {
+    const PRICES = [
+      { date: '2026-10-20', idRate: 3, idRoomType: 2, price: 350000, currency: 'COP' },
+    ];
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: PRICES, capture }) });
+    const res = await provider.callTool(
+      'mcp_erbon_get_rate_prices',
+      { dateFrom: '2026-10-20', dateTo: '2026-10-23', idRate: 3, idRoomType: 2 },
+      ctx,
+    );
+    expect(res.kind).toBe('success');
+    if (res.kind === 'success') expect(res.data).toEqual(PRICES);
+    expect(capture[0]?.url).toContain('/hotel/H1/mapping/rateprices');
+    expect(capture[0]?.init.headers?.dateFrom).toBe('2026-10-20');
+    expect(capture[0]?.init.headers?.idRate).toBe('3');
+    expect(capture[0]?.init.headers?.idRoomType).toBe('2');
+  });
+
+  it('returns an empty array verbatim when the hotel has no prices loaded (sandbox reality)', async () => {
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: [] }) });
+    const res = await provider.callTool(
+      'mcp_erbon_get_rate_prices',
+      { dateFrom: '2026-10-20', dateTo: '2026-10-23', idRate: 3, idRoomType: 2 },
+      ctx,
+    );
+    expect(res.kind).toBe('success');
+    if (res.kind === 'success') expect(res.data).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S4 — conformance & error mapping
+// ---------------------------------------------------------------------------
+
+describe('erbon provider — S4 conformance & errors', () => {
+  it('satisfies the generic provider conformance contract', async () => {
+    await runProviderConformance(erbonProvider);
+  });
+
+  it('maps a 429 to PROVIDER_RATE_LIMITED and a 500 to PROVIDER_UNAVAILABLE', async () => {
+    const limited = createErbonProvider({
+      fetchImpl: fakeFetch({ status: 429, body: 'slow down' }),
+    });
+    const r1 = await limited.callTool('mcp_erbon_list_rates', {}, ctx);
+    expect(r1.kind).toBe('error');
+    if (r1.kind === 'error') expect(r1.code).toBe(ProviderErrorCode.RATE_LIMITED);
+
+    const down = createErbonProvider({ fetchImpl: fakeFetch({ status: 500, body: 'boom' }) });
+    const r2 = await down.callTool('mcp_erbon_list_rates', {}, ctx);
+    expect(r2.kind).toBe('error');
+    if (r2.kind === 'error') expect(r2.code).toBe(ProviderErrorCode.PROVIDER_UNAVAILABLE);
+  });
+
+  it('requires hotelID context (missing metadata → INVALID_INPUT, no request made)', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: [], capture }) });
+    const res = await provider.callTool(
+      'mcp_erbon_list_rates',
+      {},
+      {
+        credential: { secret: new SecretString('tok') },
+      },
+    );
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
+    expect(capture.length).toBe(0);
   });
 });
