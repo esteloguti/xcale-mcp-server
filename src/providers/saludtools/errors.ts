@@ -388,3 +388,41 @@ export function unwrapSaludtools(res: RequestResult, operation: string): Unwrapp
     ...(typeof env.id === 'number' || typeof env.id === 'string' ? { recordId: env.id } : {}),
   };
 }
+
+/**
+ * On a CLINICAL read, "nothing came back" has **two causes with opposite answers**, and SaludTools
+ * reports both as a `412`.
+ *
+ * Both wordings were observed on 2026-09-24 against production, on `MEDICINE/READ`:
+ *
+ * - a document nobody holds → `"No existe paciente con ese tipo y numero de documentacion en la
+ *   compañia"` — **that person is not registered at this clinic.** The next move is to register them.
+ * - a patient who exists and has no prescriptions → `"No se ha encontrado una prescripcion en nuestra
+ *   base de datos con los valores de busqueda ingresados."` — **that person is registered and has no
+ *   such record.** The next move is to say so, and it is a perfectly good answer.
+ *
+ * Collapsing them into one `found: false` is the mistake this integration has already made three
+ * times with absent values, and here it is worse than usual: an agent told "not found" for a
+ * registered patient may offer to register them again, and a create would then be refused as a
+ * duplicate — a loop built entirely out of a missing distinction.
+ *
+ * So the tools return the cause by name rather than an absence to interpret. Prose-matching is the
+ * fallback it always is here, but there is no structural signal on this surface: unlike the patient
+ * read, where absence is a `200` with an empty body, a clinical absence is a failure with a sentence.
+ */
+export type ClinicalAbsence = 'patient_not_registered' | 'no_record_for_patient';
+
+export function clinicalAbsence(result: Unwrapped): ClinicalAbsence | undefined {
+  if (result.ok || result.detail === undefined) return undefined;
+  const text = result.detail.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+
+  // Checked first: it is the more specific claim, and "no existe paciente" would otherwise be
+  // readable as a generic not-found by a looser matcher added later.
+  if (text.includes('no existe paciente') || text.includes('no se ha encontrado ningun paciente')) {
+    return 'patient_not_registered';
+  }
+  if (text.includes('no se ha encontrado') || text.includes('no se encontro')) {
+    return 'no_record_for_patient';
+  }
+  return undefined;
+}

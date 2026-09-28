@@ -205,6 +205,32 @@ gynaecological history, personal history, family history, and the ~33 parametric
   name. It is built (completeness) and withdrawn from `tools/list` (D5). The agent's way to a patient is the
   document-number lookup.
 
+- **D10 — Phase 3 is BUILT, and withdrawn from `tools/list` until #1055 answers** (2026-09-28, with Juan
+  José). The rule this replaces was my own: _"Q6 must be answered before phase 3 is written, not before it
+  is shipped."_ Its purpose was that no clinical PHI reaches a model before a human decided it may — and
+  `controlPlane: true` serves that purpose exactly, while "do not write it" only delays the work.
+
+  A consumer builds its agent's menu from `tools/list`. A tool that never appears there cannot be selected
+  by a model, hallucinated into a plan, or reached through prompt injection — so with every clinical read
+  withdrawn, **zero PHI can reach an LLM**, which is the entire content of the original rule. What changes
+  is that the code exists, is typed, is projected and is tested, so the day Mateo decides, exposing a tool
+  is deleting one line from its definition rather than starting a phase.
+
+  Three things make this safe rather than clever, and all three are enforced by tests
+  (`__tests__/clinical.test.ts`):
+  - **Every** clinical tool is control-plane, with no exception list. The test asserts the empty set, not
+    a count: an exception is somebody's medical record on a model's context window.
+  - Every one declares an `identityPolicy`, so a consumer is told which argument names a person.
+  - The projections are allow-lists, so a field the vendor adds tomorrow does not appear by default.
+
+  **It does not pre-judge #1055.** The decision is still whether a clinic's agent may read patient records;
+  this only means the answer will not also cost a build. If the answer is no, the tools stay withdrawn and
+  a consumer-driven sync can still use them — which is what D5 already says clinical writes are for.
+
+  **The distinction to keep straight:** control-plane is _temporary_ for the clinical reads and _permanent_
+  for the clinical writes (D5). Prescribing or filing a diagnosis is not an agent's move under any tenant's
+  rules; reading a patient their own results might be, and that is Mateo's call.
+
 ## 4. The phases
 
 Each phase is independently shippable and carries its own evidence. They all land in **one PR** at the end

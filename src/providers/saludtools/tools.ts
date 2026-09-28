@@ -11,6 +11,7 @@ import {
   describeCatalogs,
   type CatalogDescriptor,
 } from './catalogs';
+import { buildSaludtoolsClinicalTools } from './clinical';
 import type { SaludtoolsClient } from './client';
 import {
   isPatientNotFound,
@@ -35,19 +36,23 @@ import {
  * catalogs. Both have request AND response shapes documented with concrete examples, so they can be
  * written, projected and tested now.
  *
- * Phases 3 and 4 — the clinical reads and writes — are NOT here, and their absence is a decision:
+ * **Phase 3 — the clinical reads — now lives in `clinical.ts`**, and every tool there is
+ * control-plane: withdrawn from `tools/list`, so no agent can see or call one. That is what let it be
+ * built before xcale-backend#1055 is answered, and the reasoning is in that file's header.
  *
- * - **The clinical READS cannot be projected yet.** D6 requires an allow-list of fields, and the
- *   vendor documents no response body for a clinical history, an exam result, a paraclinic or an
- *   antecedent. Writing them today means either inventing field names or returning raw clinical PHI
- *   unprojected. Both are worse than waiting.
- * - **The clinical WRITES cannot be typed yet.** Their request bodies exist as single examples —
- *   `CLINIC_HISTORY/CREATE` is 5.4 KB of nested clinical JSON — with no field table saying which
- *   parts are required, which repeat and which are catalog ids. A strict zod schema derived from one
- *   example is a guess wearing a compiler's approval.
+ * The two reasons recorded here for not building it have both been retired:
  *
- * Both unblock the same way: a credential (Q1) and one recorded round trip per module. The phases are
- * designed; they are not fabricated.
+ * - *"The clinical READS cannot be projected."* They can. The vendor publishes an attribute table per
+ *   surface (`docs/design/saludtools-provider/clinical-surfaces.md`, 2026-09-28), and — more to the
+ *   point — **an allow-list is exactly the artifact that survives imperfect documentation**, because
+ *   its failure mode is omission. A field the docs invented never matches; a field they forgot is
+ *   dropped. Every documentation error found in this integration lands on that safe side.
+ * - *"The clinical WRITES cannot be typed."* They can, from the same tables. Phase 4 is still
+ *   unbuilt, but its blocker is that **nine of the ten clinical writes have no delete**, so it cannot
+ *   be exercised against a clinic that treats real patients (#1057) — not that its shape is unknown.
+ *
+ * What stays out of both files is `CLINIC_HISTORY`'s read: ~80 nested vital-sign fields, and an
+ * allow-list of eighty hand-transcribed names is a list with a typo in it.
  */
 
 /** A patient's identity in SaludTools: the document type id plus the number. */
@@ -766,5 +771,12 @@ export function buildSaludtoolsTools(client: SaludtoolsClient): readonly ToolDef
           'patientId',
         ),
     }),
+
+    /*
+     * Phase 3. Appended rather than inlined so this file stays the agenda loop and the catalogs —
+     * the surface an agent actually sees — and the clinical half stays one file you can read end to
+     * end before deciding to expose any of it.
+     */
+    ...buildSaludtoolsClinicalTools(client),
   ];
 }

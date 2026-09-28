@@ -205,7 +205,38 @@ does not mention 429. No `Retry-After` was returned.
 **Withdrawn from `tools/list`, callable by name (`controlPlane: true`, ADR 0013):**
 `mcp_saludtools_search_patients` (a paged walk of the clinic's patient list),
 `mcp_saludtools_delete_patient`, `mcp_saludtools_delete_appointment`,
-`mcp_saludtools_get_reference_catalog` (the 24 clinical catalogs).
+`mcp_saludtools_get_reference_catalog` (the 24 clinical catalogs) — **and every phase-3 clinical
+read**, below.
+
+### C.1.1 The clinical reads — built, and invisible to agents
+
+Sixteen tools over the clinical surfaces, all `controlPlane: true` (decision D10):
+
+| Reached by a patient document                                            | Reached by a record id                                  |
+| ------------------------------------------------------------------------ | ------------------------------------------------------- |
+| `get_last_prescription`, `get_gyneco_history`, `get_family_history`      | `get_prescription`, `get_exam_result`, `get_disability` |
+| `search_exam_results`, `search_family_history`                           | `get_patient_file`, `get_personal_history_entry`        |
+| `search_disabilities`, `search_patient_files`, `search_personal_history` | `get_paraclinic`, `get_exam_prescription`               |
+
+**Why they exist while [#1055](https://github.com/matesjara/xcale-backend/issues/1055) is open.** A
+consumer builds its agent's menu from `tools/list`, so a withdrawn tool cannot be selected by a model,
+hallucinated into a plan, or reached through prompt injection: **no clinical PHI can reach an LLM.**
+That is the whole content of the rule that previously said phase 3 must not be _written_. The code
+being typed, projected and tested costs nothing and pre-judges nothing; when the decision lands,
+exposing a tool is deleting one line.
+
+**Output shape.** Each read answers `{found: true, record}` or an absence **named by its cause** —
+`{found: false, reason: "patient_not_registered" | "no_record_for_patient"}`. SaludTools reports both
+as a `412`, and they call for opposite moves (register this person / tell them they have no such
+record), so they are never collapsed. Searches answer `{records, total}`.
+
+**What is NOT built:** `CLINIC_HISTORY`'s read. Its response nests ~80 vital-sign fields, and a
+hand-transcribed allow-list of eighty names is a list with a typo in it. It is also unreachable from a
+patient document, so no agent path to it exists regardless.
+
+**Phase 4 — the clinical writes — remains unbuilt**, and its blocker is not shape: nine of the ten
+clinical writes have **no delete**, so the phase cannot be exercised against a clinic that treats real
+patients ([#1057](https://github.com/matesjara/xcale-backend/issues/1057)).
 
 Input rules:
 
