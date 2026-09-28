@@ -1,6 +1,7 @@
 # Erbon booking write-path — grill notes (pre feature-design)
 
-- **Status:** alignment (grill, in progress). Q1 resolved; Q2–Q3 open.
+- **Status:** alignment (grill COMPLETE for the MCP side). Q1–Q3 resolved; Q4 is the backend phase.
+- **Branch:** single branch `feat/erbon-read-only-provider` (read-only + booking write together — one branch by decision 2026-09-28).
 - **Date:** 2026-09-28
 - **Code target repo:** `xcale-mcp-server` (the create tool lands in the existing `erbon` provider, not a new provider). Write-**safety** lives in `xcale-backend` (separate phase).
 - **Source:** Erbon Swagger (`POST /hotel/{hotelID}/booking/new`, "AE79"), live sandbox, and Giovanni's 2026-09-28 email (create endpoint + example payload). See `../erbon-read-only-provider/sandbox-evidence.md` §6.
@@ -32,7 +33,11 @@ Add the ability to **create a reservation** in Erbon from xcale. The MCP side is
 ## 4. Open questions
 
 - **Q2 (scope) — Guest prerequisite. RESOLVED (2026-09-28): YES.** Add thin `mcp_erbon_search_guest` + `mcp_erbon_create_guest` to the `erbon` provider, both `controlPlane`. `idGuest` is required for a booking, so keeping the full ensure-guest flow in the MCP means the backend has everything to orchestrate a booking with no missing dependency. `create_guest` is a lower-stakes correctable write (a CRM record, editable via `guests/update`), so lighter gating than the booking itself.
-- **Q3 (contract) — `create_booking` input shape.** Faithful to Erbon but coherent: which fields does the zod `input` require vs allow-optional, given swagger `required: []`? _Recommendation: require the coherent-minimum (`checkInDate`, `checkOutDate`, `idRoomTypeReserved`, `idRoomTypeOccupied`, `idRate`, `idConfigPension`, `numberAdults`, `ratePrices[]`, `guests[]`), pass the rest through as optional (incl. `voucher`, company/agency/source/segment ids, comments). Validate dates ISO, ids positive ints — let Erbon validate the rest._
+- **Q3 (contract) — `create_booking` input shape. RESOLVED (2026-09-28).** Faithful thin passthrough with a coherent minimum:
+  - **Required:** `checkInDate`, `checkOutDate` (ISO `YYYY-MM-DD`), `idRoomTypeReserved`, `idRoomTypeOccupied`, `idRate`, `idConfigPension` (`RO`/`BB`/`HB`/`FB`/`AI`), `numberAdults`, `ratePrices[]` (`[{ date, price }]` — the price to charge per night, composed by the backend from the quote), `guests[]` (`[{ idGuest, isHolder }]`).
+  - **Optional passthrough:** `voucher` (idempotency — filled by the backend, NOT required at the MCP level, per ADR 0015), `idBookingStatus`, `numberChildren`/`numberChildren2`/`numberBabies`, `isDirect`/`isCompany`/`idCompany`/`idAgency`/`idSource`/`idSegment`, `isRateDefault`, `commentsBooking`, `contact*`, etc.
+  - **Validation:** dates ISO, ids positive ints; nothing else — Erbon validates the rest (no reimplementation of its business rules).
+  - **One room per call** — no room array; each reservation is a separate `create_booking`.
 - **Q4 (backend, flagged) — human-gated confirm.** Given no undo, the propose→confirm must be a human (guest/hotel staff), not the agent. Decided in the backend grill; raise to Mateo.
 
 ## 5. ADRs
