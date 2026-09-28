@@ -19,7 +19,13 @@ describe('buildCatalog', () => {
 
   it('carries no secrets and no consumer-specific concepts', () => {
     const json = JSON.stringify(catalog);
-    expect(json).not.toMatch(/clientSecret|client_secret|password|tenant|\bplan\b/i);
+    // The scan targets secret VALUES and consumer concepts — not authDescriptor field NAMES.
+    // `password` is intentionally NOT here: it is a legitimate non-secret `bodyFields` wire field
+    // name (Erbon's `/auth/login` expects `{username,password}`), never a secret value — those are
+    // kept out by SecretString + Credential-in-Transit-Only. A leaked SECRET field would still trip
+    // `clientSecret`/`client_secret`. Do not re-add `password` (it re-breaks Erbon). See ADR
+    // authdescriptor-field-names-are-non-secret.md.
+    expect(json).not.toMatch(/clientSecret|client_secret|tenant|\bplan\b/i);
   });
 
   it('publishes additionalAuthDescriptors only for providers declaring extra connect methods', () => {
