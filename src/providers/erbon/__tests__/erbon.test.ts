@@ -192,7 +192,18 @@ describe('erbon provider — S3 money guard', () => {
 
   it('get_rate_prices reads mapping/rateprices with dates + ids in headers, verbatim', async () => {
     const PRICES = [
-      { date: '2026-10-20', idRate: 3, idRoomType: 2, price: 350000, currency: 'COP' },
+      {
+        id: 157308,
+        idRoomType: 2,
+        idRate: 1,
+        date: '2026-09-29',
+        priceRO: 346.0,
+        priceBB: 396.0,
+        priceHB: 446.0,
+        priceFB: 496.0,
+        priceAI: 546.0,
+        currencyCode: 'COP',
+      },
     ];
     const capture: Captured[] = [];
     const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: PRICES, capture }) });

@@ -79,3 +79,18 @@ Endpoint is healthy; the sandbox hotel simply has **no prices loaded**. → wait
 ## 5. Corroborating email (Erbon → Sara, 2026-09-22)
 
 Erbon (Giovanni Neto) confirmed in writing that **creating reservations via the API is not yet possible** (only availability + prices), and estimated create + cancel + date-change ~3 weeks out. Matches §2 (no cancel/modify) and §4 (prices pending). Booking write is a future `erbon-booking` phase.
+
+## 6. Update 2026-09-28 — prices seeded + CREATE endpoint live (Giovanni)
+
+Giovanni provided a hotel with prices loaded and shipped the create endpoint.
+
+- **New hotelID with prices:** `964d9ad8-d143-4d29-bd09-114afecdd99a`. A credential reaches multiple hotels (he will send the accessible hotelIds) — confirms `hotelID` is per-call context, not the credential identity.
+- **`GET /mapping/rateprices` now returns data (Observed).** Row shape carries **per-meal-plan prices inline** (not a single `price` field as A.8 inferred):
+  ```json
+  { "id":157308, "idRoomType":2, "idRate":1, "date":"2026-09-29",
+    "priceRO":346.00, "priceBB":396.00, "priceHB":446.00, "priceFB":496.00, "priceAI":546.00, "currencyCode":"..." }
+  ```
+  One row per date; the meal plan (`RO/BB/HB/FB/AI`) selects the price field. This resolves the price-composition question — meal-plan pricing is inline, no separate read. **A.8 in api-contract must be updated to this Observed shape.** (Sweep: `rate=1 room=2` → 14 rows; other combos in that hotel returned `[]`, i.e. only priced combos carry rows.)
+- **`POST /hotel/{hotelID}/booking/new` is LIVE** ("AE79 - Create a new booking"). Swagger `required: []` (Erbon validates server-side); Giovanni's "principal" fields: `idBookingStatus, checkInDate, checkOutDate, idRoomTypeReserved, idRoomTypeOccupied, numberAdults/Children/Children2/Babies, idConfigPension, idRate, ratePrices[], isDirect, isCompany, idCompany, idAgency, idSource, idSegment, voucher, isRateDefault, commentsBooking, guests[]`. Full prop set also has `idRoom, manualValue, totalWithTax, contact*`, etc.
+- **⚠️ Still NO cancel and NO modify** in the swagger (only checkin/checkout/invoice/guest attach-remove). **A created booking cannot be undone via the API.**
+- **Erbon's own caveats:** (1) the API will create a booking **even with no availability** (overbooking) — the caller must check availability first; (2) **one room per reservation** — each booking is a separate call. The `voucher` field is caller-supplied (candidate idempotency/reconciliation key).

@@ -3,11 +3,11 @@
 > **Module**: `src/providers/erbon/` (xcale-mcp-server). Erbon connection registration lives in `xcale-backend` (Rail A), referenced here, not re-specified.
 > **Kind**: External-provider adapter contract (NOT an internal `/api/v1` REST module). It documents three wire surfaces: (A) the **Erbon external API** as Observed, (B) the **`credential_exchange` authDescriptor** (concrete), (C) the **MCP tool contract** the provider publishes.
 > **Upstream**: [feature-design.md](feature-design.md) · [grill-notes.md](grill-notes.md) · [sandbox-evidence.md](sandbox-evidence.md).
-> **Status**: Draft — frozen once Erbon seeds sandbox prices and `get_hotel` shape is confirmed.
+> **Status**: Draft — frozen once `get_hotel` shape is confirmed live (rate prices confirmed 2026-09-28 in hotel `964d9ad8-…`).
 > **Language note**: English per this repo's `CLAUDE.md` (design docs are durable).
 > **Last updated**: 2026-09-28.
 
-> **🔬 Evidence discipline.** Concrete values are **Observed** against the Erbon sandbox (2026-09-26/28, see `sandbox-evidence.md`) unless a row is marked **Inferred** — Inferred rows (`get_hotel` shape, `rateprices` row shape, `/mapping/errors` table) are confirmed on first build touch, never assumed Observed. This contract introduces no assumptions.
+> **🔬 Evidence discipline.** Concrete values are **Observed** against the Erbon sandbox (2026-09-26/28, see `sandbox-evidence.md`) unless a row is marked **Inferred** — the only remaining Inferred rows (`get_hotel` shape, `/mapping/errors` table) are confirmed on first build touch, never assumed Observed. This contract introduces no assumptions.
 
 ---
 
@@ -22,8 +22,9 @@
 | Credential delivery | `reference` (like Siigo) | Decision AD-3 |
 | Per-call context | `hotelID` (account-scoped credential; hotelID per call) | Observed (JWT) |
 | Request params | in **HTTP headers**, not query string | Observed |
-| Booking write / cancel / modify | **absent** from the API | Observed |
-| Rate prices in sandbox | endpoint healthy, returns `[]` (no data loaded) | Observed |
+| Booking create | `POST /booking/new` now LIVE (2026-09-28) — handled in the separate `erbon-booking` phase, NOT here | Observed |
+| Booking cancel / modify | still **absent** from the API (a created booking cannot be undone via API) | Observed |
+| Rate prices | seeded (hotel `964d9ad8-…`); row carries **per-meal-plan** prices (see A.8) | Observed |
 
 ---
 
@@ -69,7 +70,7 @@ Every data request carries `Authorization: bearer <jwt>`. `hotelID` is a **path*
 | Room type mapping | `GET /hotel/{hotelID}/mapping/roomtype` | — | array of A.5 | Observed |
 | Rate mapping | `GET /hotel/{hotelID}/mapping/rates` | — | array of A.6 | Observed |
 | Hotel info | `GET /hotel/{hotelID}` | — | object A.7 | **Inferred** — confirm on build |
-| Rate prices (backend-only) | `GET /hotel/{hotelID}/mapping/rateprices` | `dateFrom`, `dateTo` (`YYYY-MM-DD`), `idRate` (int), `idRoomType` (int) | array of A.8 | **Inferred** (returned `[]` — no data seeded) |
+| Rate prices (backend-only) | `GET /hotel/{hotelID}/mapping/rateprices` | `dateFrom`, `dateTo` (`YYYY-MM-DD`), `idRate` (int), `idRoomType` (int) | array of A.8 | Observed (only priced rate×roomType combos return rows; others `[]`) |
 
 ### A.4 Availability row (Observed)
 ```jsonc
@@ -96,10 +97,22 @@ Every data request carries `Authorization: bearer <jwt>`. `hotelID` is a **path*
 { "name": "…", "contact": "…", "currency": "…" }  // exact shape TBD; needed for the handoff message
 ```
 
-### A.8 Rate price row (Inferred — sandbox empty)
+### A.8 Rate price row (Observed — hotel `964d9ad8-…`, 2026-09-28)
 ```jsonc
-{ "date": "2026-10-20", "idRate": 3, "idRoomType": 2, "price": 000000, "currency": "…" }  // shape to confirm once Erbon seeds prices
+{
+  "id": 157308,
+  "idRoomType": 2,
+  "idRate": 1,
+  "date": "2026-09-29",
+  "priceRO": 346.00,   // Room Only
+  "priceBB": 396.00,   // Bed & Breakfast
+  "priceHB": 446.00,   // Half Board
+  "priceFB": 496.00,   // Full Board
+  "priceAI": 546.00,   // All Inclusive
+  "currencyCode": "…"
+}
 ```
+> One row per date in the window. Prices are **per meal plan, inline** — the chosen meal plan (`idConfigPension` = `RO`/`BB`/`HB`/`FB`/`AI`) selects the field. This is the price source the backend `erbon-stay-truth` adapter reads to compose a `StayQuote`; whether these are pre- or post-tax is a backend-grill question. Returned verbatim; the provider does no math.
 
 ### A.9 Error responses (Observed)
 
@@ -189,10 +202,14 @@ All tools declared with `defineTool` (zod `input` = single source of truth). Dat
 ]
 ```
 
-**`get_rate_prices` (hand-made until seeded)** (`__fixtures__/rateprices.json`) — shape Inferred:
+**`get_rate_prices` success** (`__fixtures__/rateprices.json`) — Observed (hotel `964d9ad8-…`):
 ```json
-[ { "date": "2026-10-20", "idRate": 3, "idRoomType": 2, "price": 350000, "currency": "COP" } ]
+[
+  { "id": 157308, "idRoomType": 2, "idRate": 1, "date": "2026-09-29",
+    "priceRO": 346.0, "priceBB": 396.0, "priceHB": 446.0, "priceFB": 496.0, "priceAI": 546.0, "currencyCode": "..." }
+]
 ```
+**`get_rate_prices` empty** — a rate×roomType combo with no prices loaded returns `[]` (HTTP 200), not an error.
 
 **Auth expired** — any read returning HTTP 401 → `ToolResult` `{ isError: true, code: 'PROVIDER_AUTH_EXPIRED' }`.
 
@@ -203,6 +220,6 @@ All tools declared with `defineTool` (zod `input` = single source of truth). Dat
 | Phase | Scope | Trigger |
 |:--|:--|:--|
 | **This contract** | 4 menu reads + backend-only `get_rate_prices`; auth; errors | now |
-| Freeze | confirm A.7 (`get_hotel`) + A.8 (`rateprices`) shapes | Erbon seeds sandbox prices |
-| Backend (separate) | `erbon-stay-truth` composes `StayQuote`; wire to `price-enquiry` | after freeze |
-| `erbon-booking` (future) | create / cancel / modify tools | Erbon ships the write API (~Oct 2026) |
+| Freeze | confirm A.7 (`get_hotel`) live shape (A.8 `rateprices` confirmed 2026-09-28) | before read-only merge |
+| `erbon-booking` (NEXT — MCP) | create-reservation tool (`POST /booking/new`, LIVE 2026-09-28); no cancel/modify yet → needs availability-guard + `voucher` idempotency + propose→confirm gating; its own grill | now |
+| Backend (separate) | `erbon-stay-truth` composes `StayQuote`; wire to `price-enquiry` | after MCP phases |
