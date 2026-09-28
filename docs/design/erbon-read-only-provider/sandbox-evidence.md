@@ -1,0 +1,81 @@
+# Erbon — sandbox evidence
+
+- **Date observed:** 2026-09-26 → 2026-09-28
+- **Host:** `https://api.erbonsoftware.com` (single host; sandbox = partner-issued test credentials, no separate base URL observed)
+- **Credentials:** partner-issued sandbox login (user `economy`, role `ECONOMY`) + `hotelID 358AC521-…`. Secrets are **not** recorded here (Credential-in-Transit-Only); values live only in the connect flow / Rail A.
+- **Method:** read-only `curl` probes. No write endpoints were exercised.
+
+All shapes below are **Observed** (verbatim from live responses), not inferred from the swagger.
+
+---
+
+## 1. Auth — `POST /auth/login`
+
+Request body: `{ "username": "…", "password": "…" }` → **HTTP 200**. Response shape:
+
+```json
+{ "bearerToken": "eyJhbG…(439-char JWT)", "expirationUTCDate": "2026-09-28T01:16:35.4536443Z" }
+```
+
+- Token field: **`bearerToken`** (JWT). Applied as `Authorization: bearer <jwt>` on data calls.
+- Expiry field: **`expirationUTCDate`** — an **absolute UTC datetime** (~48h lifetime), NOT `expires_in` seconds. ← divergence from Siigo; see grill-notes Q1.
+
+### JWT payload claims (decoded, non-secret)
+
+```json
+{
+  "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name": "0fa1ff82-f39e-438e-a2b5-85b3f1aaba1b",
+  "http://schemas.microsoft.com/ws/2008/06/identity/claims/role": "ECONOMY",
+  "exp": 1790648383
+}
+```
+
+The identity claim is an **account GUID**, not the `hotelID` — proving the credential is account-scoped and `hotelID` is per-call context (grill D4).
+
+## 2. Endpoint enumeration (from swagger, 65 paths)
+
+- **Booking:** `GET /hotel/{hotelID}/booking/{id}`, `POST /hotel/{hotelID}/booking/new`, `POST .../booking/search`, `PUT .../booking/{id}/checkin`, `PUT .../booking/{id}/checkout`, `POST .../booking/{id}/invoice`, guest attach/new/remove, `POST /hotel/booking/list`, `POST /booking/localizerList`.
+- **Cancel / modify a booking:** **NONE.** No cancel/delete/update-dates/change-room endpoint exists. The only booking PUTs are `checkin`/`checkout`.
+- **Availability:** `GET /hotel/{hotelID}/availability`, `GET .../availability/inventory`, `GET .../occupancy/withpension`.
+- **Rates/prices:** `GET .../mapping/rates`, `GET .../mapping/rateprices`, `POST .../sales/rate/prices`, `POST .../sales/rate/prices/mealplan`.
+- Non-`{hotelID}` paths: `POST /hotel/booking/list`, `POST /booking/localizerList`, `POST /hotel/hotelid` (localizer→hotelID), `GET /mapping/errors`. → no "list my hotels" listing.
+
+## 3. Reads that work (live, HTTP 200)
+
+**`GET /hotel/{hotelID}/availability`** — headers `checkinDate: 2026-10-20`, `checkoutDate: 2026-10-23`:
+
+```json
+[{"date":"2026-10-20","roomTypeDescription":"SUITE ESTANDAR","statusAvailability":8},
+ {"date":"2026-10-20","roomTypeDescription":"SUITE JUNIOR","statusAvailability":12}, …]
+```
+Note: rows key on `roomTypeDescription`, **no id**.
+
+**`GET /hotel/{hotelID}/mapping/roomtype`**:
+
+```json
+[{"id":2,"code":"STD","description":"SUITE ESTANDAR","minPax":1,"maxPax":2,"externalCode":"","roomCount":8,"roomCountOccupied":1}, …]
+```
+
+**`GET /hotel/{hotelID}/mapping/rates`**:
+
+```json
+[{"id":3,"code":"Estandar RC-Channel","description":"Estandar RC-Channel","allowRO":true,"allowBB":true,"allowHB":true,"allowFB":true,"allowAI":true,"isDerived":false,"derivation":null}, …]
+```
+Meal plans are flags per rate: `allowRO/BB/HB/FB/AI` (Room Only / Bed&Breakfast / Half Board / Full Board / All Inclusive).
+
+## 4. Reads that returned empty or error
+
+**`GET /hotel/{hotelID}/mapping/rateprices`** — headers `dateFrom`/`dateTo`/`idRate`/`idRoomType` → **HTTP 200 but `[]`** for every combo tried:
+- rates {1,3,4,5,6} × roomTypes {2,4,5} × Nov date range → all `[]`
+- year-end window (rate 1 = "Tarifa Fin de ano") × roomTypes {2,5} → `[]`
+- near-date range, no roomType filter, and datetime-format dates → `[]`
+
+Endpoint is healthy; the sandbox hotel simply has **no prices loaded**. → waiting on Erbon to seed prices (grill Q3). Not a blocker to building the provider (use a hand-made fixture).
+
+**`GET /hotel/{hotelID}/availability/inventory`** → **HTTP 400** `ERR_ROOM_AVAILABILITY_FETCH` (wrong/missing params — not needed for the quote path).
+
+**`GET /hotel/{hotelID}/occupancy/withpension`** → **HTTP 400** (not needed for the quote path).
+
+## 5. Corroborating email (Erbon → Sara, 2026-09-22)
+
+Erbon (Giovanni Neto) confirmed in writing that **creating reservations via the API is not yet possible** (only availability + prices), and estimated create + cancel + date-change ~3 weeks out. Matches §2 (no cancel/modify) and §4 (prices pending). Booking write is a future `erbon-booking` phase.
