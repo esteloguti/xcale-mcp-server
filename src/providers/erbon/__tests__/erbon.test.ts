@@ -12,7 +12,7 @@ import { createErbonProvider, erbonProvider } from '../provider';
 
 interface Captured {
   url: string;
-  init: { method?: string; headers?: Record<string, string> };
+  init: { method?: string; headers?: Record<string, string>; body?: string };
 }
 
 /** A fake `fetch` that records the request and returns a canned JSON body / status. */
@@ -268,5 +268,136 @@ describe('erbon provider — S4 conformance & errors', () => {
     expect(res.kind).toBe('error');
     if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
     expect(capture.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S5 — create_booking (backend-only write)
+// ---------------------------------------------------------------------------
+
+const VALID_BOOKING = {
+  checkInDate: '2026-09-29',
+  checkOutDate: '2026-09-30',
+  idRoomTypeReserved: 2,
+  idRoomTypeOccupied: 2,
+  idRate: 1,
+  idConfigPension: 'BB' as const,
+  numberAdults: 2,
+  ratePrices: [{ date: '2026-09-29', price: 270 }],
+  guests: [{ idGuest: 29, isHolder: true }],
+};
+
+describe('erbon provider — S5 create_booking (write)', () => {
+  it('is backend-only: withdrawn from the agent menu, present in routableToolNames', () => {
+    expect(erbonProvider.listTools().map((t) => t.name)).not.toContain('mcp_erbon_create_booking');
+    expect(erbonProvider.routableToolNames()).toContain('mcp_erbon_create_booking');
+  });
+
+  it('POSTs booking/new with the args as a JSON body, scoped to hotelID, verbatim', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({
+      fetchImpl: fakeFetch({ body: { bookingInternalID: 999 }, capture }),
+    });
+    const res = await provider.callTool(
+      'mcp_erbon_create_booking',
+      { ...VALID_BOOKING, voucher: 'api123' },
+      ctx,
+    );
+    expect(res.kind).toBe('success');
+    if (res.kind === 'success') expect(res.data).toEqual({ bookingInternalID: 999 });
+    expect(capture[0]?.init.method).toBe('POST');
+    expect(capture[0]?.url).toMatch(/\/hotel\/H1\/booking\/new$/);
+    expect(capture[0]?.init.headers?.['content-type']).toBe('application/json');
+    const body = JSON.parse(capture[0]?.init.body ?? '{}');
+    expect(body.idConfigPension).toBe('BB');
+    expect(body.guests).toEqual([{ idGuest: 29, isHolder: true }]);
+    expect(body.voucher).toBe('api123');
+  });
+
+  it('rejects a booking with no guests as INVALID_INPUT before any request', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: {}, capture }) });
+    const res = await provider.callTool(
+      'mcp_erbon_create_booking',
+      { ...VALID_BOOKING, guests: [] },
+      ctx,
+    );
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
+    expect(capture.length).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S6 — guest tools + the full menu/routable split
+// ---------------------------------------------------------------------------
+
+describe('erbon provider — S6 guest tools', () => {
+  it('the agent menu is exactly the 4 reads; every money/write tool is routable-only', () => {
+    const menu = erbonProvider.listTools().map((t) => t.name);
+    expect(new Set(menu)).toEqual(
+      new Set([
+        'mcp_erbon_check_availability',
+        'mcp_erbon_list_room_types',
+        'mcp_erbon_list_rates',
+        'mcp_erbon_get_hotel',
+      ]),
+    );
+    const routable = erbonProvider.routableToolNames();
+    for (const n of [
+      'mcp_erbon_get_rate_prices',
+      'mcp_erbon_create_booking',
+      'mcp_erbon_search_guest',
+      'mcp_erbon_create_guest',
+    ]) {
+      expect(routable).toContain(n);
+      expect(menu).not.toContain(n);
+    }
+  });
+
+  it('search_guest sends guestID in a header', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: [{ id: 29 }], capture }) });
+    const res = await provider.callTool('mcp_erbon_search_guest', { guestID: 29 }, ctx);
+    expect(res.kind).toBe('success');
+    expect(capture[0]?.url).toMatch(/\/hotel\/H1\/guest\/search$/);
+    expect(capture[0]?.init.headers?.guestID).toBe('29');
+  });
+
+  it('search_guest sends documentType/documentNumber in headers', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: [], capture }) });
+    await provider.callTool(
+      'mcp_erbon_search_guest',
+      { documentType: 'CC', documentNumber: '123' },
+      ctx,
+    );
+    expect(capture[0]?.init.headers?.documenttype).toBe('CC');
+    expect(capture[0]?.init.headers?.documentnumber).toBe('123');
+  });
+
+  it('search_guest with no identifier is INVALID_INPUT, no request made', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: [], capture }) });
+    const res = await provider.callTool('mcp_erbon_search_guest', {}, ctx);
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
+    expect(capture.length).toBe(0);
+  });
+
+  it('create_guest POSTs guest/new with the args as a JSON body', async () => {
+    const capture: Captured[] = [];
+    const provider = createErbonProvider({ fetchImpl: fakeFetch({ body: { id: 30 }, capture }) });
+    const res = await provider.callTool(
+      'mcp_erbon_create_guest',
+      { name: 'Ana Díaz', email: 'ana@example.com' },
+      ctx,
+    );
+    expect(res.kind).toBe('success');
+    expect(capture[0]?.init.method).toBe('POST');
+    expect(capture[0]?.url).toMatch(/\/hotel\/H1\/guest\/new$/);
+    const body = JSON.parse(capture[0]?.init.body ?? '{}');
+    expect(body.name).toBe('Ana Díaz');
+    expect(body.email).toBe('ana@example.com');
   });
 });

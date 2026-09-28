@@ -109,5 +109,108 @@ export function buildErbonTools(
           'get rate prices',
         ),
     }),
+    tool({
+      // BACKEND-ONLY WRITE (controlPlane, ADR 0013 + 0015): thin passthrough. Erbon has NO cancel/modify
+      // — a created booking cannot be undone via API — so it is withdrawn from the agent menu; the
+      // backend creates it behind its own availability-guard + voucher-idempotency + human-gated confirm.
+      name: `mcp_${SLUG}_create_booking`,
+      description:
+        'BACKEND-ONLY. Create ONE reservation at the connected Erbon hotel (one room per call). Thin ' +
+        'passthrough — the backend owns the availability check, idempotency (voucher) and confirmation; ' +
+        'Erbon cannot cancel/modify via API. Returns Erbon’s create response verbatim.',
+      controlPlane: true,
+      input: z
+        .object({
+          checkInDate: isoDate,
+          checkOutDate: isoDate,
+          idRoomTypeReserved: z.number().int().positive(),
+          idRoomTypeOccupied: z.number().int().positive(),
+          idRate: z.number().int().positive(),
+          idConfigPension: z.enum(['RO', 'BB', 'HB', 'FB', 'AI']),
+          numberAdults: z.number().int().positive(),
+          ratePrices: z
+            .array(z.object({ date: isoDate, price: z.number().nonnegative() }).strict())
+            .min(1),
+          guests: z
+            .array(
+              z.object({ idGuest: z.number().int().positive(), isHolder: z.boolean() }).strict(),
+            )
+            .min(1),
+          // optional passthrough — the backend fills or omits these (voucher = idempotency, ADR 0015)
+          voucher: z.string().optional(),
+          idBookingStatus: z.string().optional(),
+          numberChildren: z.number().int().nonnegative().optional(),
+          numberChildren2: z.number().int().nonnegative().optional(),
+          numberBabies: z.number().int().nonnegative().optional(),
+          isDirect: z.boolean().optional(),
+          isCompany: z.boolean().optional(),
+          idCompany: z.number().int().optional(),
+          idAgency: z.number().int().optional(),
+          idSource: z.number().int().optional(),
+          idSegment: z.number().int().optional(),
+          isRateDefault: z.boolean().optional(),
+          commentsBooking: z.string().optional(),
+        })
+        .strict(),
+      handler: async (args, ctx) =>
+        unwrapErbon(
+          await client.post('booking/new', ctx.request, ctx.metadata, args),
+          'create booking',
+        ),
+    }),
+    tool({
+      name: `mcp_${SLUG}_search_guest`,
+      description:
+        'BACKEND-ONLY. Find a guest at the connected Erbon hotel by `guestID`, or by `documentType` + ' +
+        '`documentNumber`. Resolves an existing guest before a booking (idGuest is required). Verbatim.',
+      controlPlane: true,
+      input: z
+        .object({
+          guestID: z.number().int().positive().optional(),
+          documentType: z.string().min(1).optional(),
+          documentNumber: z.string().min(1).optional(),
+        })
+        .strict()
+        .refine(
+          (v) =>
+            v.guestID !== undefined ||
+            (v.documentType !== undefined && v.documentNumber !== undefined),
+          'Provide guestID, or both documentType and documentNumber',
+        ),
+      handler: async (args, ctx) => {
+        const headers: Record<string, string> = {};
+        if (args.guestID !== undefined) headers.guestID = String(args.guestID);
+        if (args.documentType !== undefined) headers.documenttype = args.documentType;
+        if (args.documentNumber !== undefined) headers.documentnumber = args.documentNumber;
+        return unwrapErbon(
+          await client.get('guest/search', ctx.request, ctx.metadata, headers),
+          'search guest',
+        );
+      },
+    }),
+    tool({
+      name: `mcp_${SLUG}_create_guest`,
+      description:
+        'BACKEND-ONLY. Create (or update, when `id` is present) a guest at the connected Erbon hotel — ' +
+        'the prerequisite for a booking. A correctable write (editable via Erbon). Returns it verbatim.',
+      controlPlane: true,
+      input: z
+        .object({
+          name: z.string().min(1),
+          id: z.number().int().positive().optional(),
+          email: z.string().optional(),
+          phone: z.string().optional(),
+          birthDate: isoDate.optional(),
+          genderID: z.number().int().optional(),
+          nationality: z.string().optional(),
+          documents: z.array(z.record(z.unknown())).optional(),
+        })
+        .passthrough(),
+      handler: async (args, ctx) =>
+        unwrapErbon(
+          await client.post('guest/new', ctx.request, ctx.metadata, args),
+          'create guest',
+        ),
+    }),
   ];
 }
