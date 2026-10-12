@@ -281,12 +281,12 @@ provider needs it (*complexity on demand*).
 | Provider API client, tool execution, error normalization | **server** | ⬅ natives migrate gradually (§16 foundation) |
 | Per-user curation policy / token budget | **backend** | — |
 | Tool-search / filter mechanism over the catalog | **server** (seam reserved) | new |
-| `tools/list` cache | **backend** (`ttlMs` + `schemaVersion` keyed) | — |
+| `tools/list` cache | **backend** (`ttlMs`, keyed by the server URL — not by `schemaVersion`, #88) | — |
 
 **Resulting rule of thumb:** the backend knows *which credential it custodies* and *how to
-consume capabilities*; it never knows *how a provider works technically*. The only irreducible
-backend touch per OAuth provider is two secrets in Doppler (generic config, permitted by
-principle #0). For an `api_key` provider, even that shrinks to near-nothing.
+consume capabilities*; it never knows *how a provider works technically*. What it keeps per provider
+is registration data (principle #0): its catalog entry, and for an OAuth provider two secrets in Doppler by
+convention, or for a credential-exchange provider a pinned mint descriptor.
 
 ---
 
