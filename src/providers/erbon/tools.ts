@@ -107,6 +107,19 @@ export function buildErbonTools(
         unwrapErbon(await client.get('mapping/rates', ctx.request, ctx.metadata), 'list rates'),
     }),
     tool({
+      // BACKEND-ONLY read (`controlPlane`): a booking row names its currency only by `currencyId`, and
+      // the CRM backfill needs the ISO code to record an amount. Nothing the agent narrates.
+      name: `mcp_${SLUG}_list_currencies`,
+      description:
+        "BACKEND-ONLY. List the connected Erbon hotel's active currencies, verbatim: each carries `id`, " +
+        '`code` (ISO, e.g. BRL), `description`, `symbol` and `isDefault`. A booking row has only ' +
+        '`currencyId`; this maps it to the ISO code.',
+      controlPlane: true,
+      input: noArgs,
+      handler: async (_args, ctx) =>
+        unwrapErbon(await client.get('currencies', ctx.request, ctx.metadata), 'list currencies'),
+    }),
+    tool({
       name: `mcp_${SLUG}_get_hotel`,
       description:
         'Get the connected Erbon hotel profile (name, contact, currency), verbatim. Use it for the ' +

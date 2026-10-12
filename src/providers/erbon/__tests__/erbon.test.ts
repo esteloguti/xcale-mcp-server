@@ -676,6 +676,39 @@ describe('erbon provider — get_segment_sources', () => {
   });
 });
 
+// Observed on the BR sandbox hotel (2026-10-12): a booking row carries only `currencyId`.
+const CURRENCIES = [
+  { id: 2, code: 'BRL', description: 'Real', symbol: 'R$', isDefault: true },
+  { id: 4, code: 'COP', description: 'COP', symbol: 'COP', isDefault: false },
+];
+
+describe('erbon provider — list_currencies', () => {
+  it('is backend-only: off the agent menu, routable by the backend', () => {
+    expect(erbonProvider.listTools().map((t) => t.name)).not.toContain('mcp_erbon_list_currencies');
+    expect(erbonProvider.routableToolNames()).toContain('mcp_erbon_list_currencies');
+  });
+
+  it("reads the hotel's active currencies, verbatim, scoped to the hotel", async () => {
+    const capture: string[] = [];
+    const provider = createErbonProvider({
+      fetchImpl: routedFetch({ '/currencies': { body: CURRENCIES } }, capture),
+    });
+    const res = await provider.callTool('mcp_erbon_list_currencies', {}, ctx);
+
+    expect(res.kind).toBe('success');
+    if (res.kind === 'success') expect(res.data).toEqual(CURRENCIES);
+    expect(capture[0]).toMatch(/\/hotel\/H1\/currencies$/);
+  });
+
+  it('takes no arguments', async () => {
+    const provider = createErbonProvider({
+      fetchImpl: routedFetch({ '/currencies': { body: CURRENCIES } }),
+    });
+    const res = await provider.callTool('mcp_erbon_list_currencies', { hotelID: 'other' }, ctx);
+    expect(res.kind).not.toBe('success');
+  });
+});
+
 describe('erbon provider — logo', () => {
   it('advertises a logo the gateway actually serves', () => {
     const logoUrl = erbonProvider.manifest.logoUrl;
