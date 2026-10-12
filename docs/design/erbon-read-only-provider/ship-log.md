@@ -34,6 +34,10 @@ returned verbatim; errors never echo Erbon's body (`unwrapErbon`: operation labe
 Also: the provider logo (`assets/erbon.webp`, `logoUrl` in the manifest); `schemaVersion`
 2026-10-06, `providerVersion` 0.3.0.
 
+## Addendum — `list_currencies` (CRM feed, 2026-10-12)
+
+A 13th tool, `list_currencies` (`controlPlane`, no arguments, backend-only): `GET /currencies`, returned verbatim (`id`, `code`, `description`, `symbol`, `isDefault`). A booking row names its currency only by `currencyId`; the backend CRM history import (xcale-backend `docs/design/erbon-crm/`, #1499) maps it to the ISO code to record an amount. **Deploy this before running that import**: without it the import records every stay with no amount, and the import is idempotent, so those stays are not corrected by a later re-run. Tested (`erbon.test.ts`: backend-only, scoped to the hotel, no arguments).
+
 ## Reviews
 
 - `/code-review` (two rounds, all findings fixed: `f164361`, `7065d1d`), `/security-review` clean.
