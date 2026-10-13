@@ -700,12 +700,24 @@ describe('erbon provider — list_currencies', () => {
     expect(capture[0]).toMatch(/\/hotel\/H1\/currencies$/);
   });
 
-  it('takes no arguments', async () => {
+  it('takes no arguments: an extra key (a hotel override) is rejected before any request', async () => {
+    const capture: string[] = [];
     const provider = createErbonProvider({
-      fetchImpl: routedFetch({ '/currencies': { body: CURRENCIES } }),
+      fetchImpl: routedFetch({ '/currencies': { body: CURRENCIES } }, capture),
     });
     const res = await provider.callTool('mcp_erbon_list_currencies', { hotelID: 'other' }, ctx);
-    expect(res.kind).not.toBe('success');
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
+    expect(capture.length).toBe(0);
+  });
+
+  it('maps a 401 from Erbon to PROVIDER_AUTH_EXPIRED (an expired credential is not an empty table)', async () => {
+    const provider = createErbonProvider({
+      fetchImpl: fakeFetch({ status: 401, body: 'unauthorized' }),
+    });
+    const res = await provider.callTool('mcp_erbon_list_currencies', {}, ctx);
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.AUTH_EXPIRED);
   });
 });
 

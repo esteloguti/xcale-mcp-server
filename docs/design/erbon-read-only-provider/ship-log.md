@@ -19,7 +19,7 @@ delivery (the durable username/password stay in the backend's Rail A; this serve
 single-use nonce for the minted JWT). `hotelID` is strict call context, never a tool argument. Data
 returned verbatim; errors never echo Erbon's body (`unwrapErbon`: operation label + HTTP status).
 
-## What shipped (12 tools)
+## What shipped (12 tools, plus `list_currencies` — see the addendum below)
 
 | Tool                                                               | Agent menu      | Purpose                                                                                               |
 | ------------------------------------------------------------------ | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -30,6 +30,7 @@ returned verbatim; errors never echo Erbon's body (`unwrapErbon`: operation labe
 | `search_guest`, `create_guest`                                     | ❌ controlPlane | Resolve / register the holder                                                                         |
 | `create_booking`                                                   | ❌ controlPlane | One reservation per call — **irreversible** (no cancel/modify API)                                    |
 | `get_booking`, `search_booking`                                    | ❌ controlPlane | Read back; find ours by voucher (`onlineSaleChannelNumber`, filtered server-side)                     |
+| `list_currencies` _(added 2026-10-12)_                             | ❌ controlPlane | The hotel's currencies (`currencyId` → ISO code), for the backend CRM import; see the addendum        |
 
 Also: the provider logo (`assets/erbon.webp`, `logoUrl` in the manifest); `schemaVersion`
 2026-10-06, `providerVersion` 0.3.0.
