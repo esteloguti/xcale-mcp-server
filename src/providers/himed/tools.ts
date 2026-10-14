@@ -60,6 +60,15 @@ export function buildHimedTools(
 ): ReadonlyArray<ToolDefinition<any, HimedContext>> {
   const tool = toolFactory<HimedContext>();
 
+  /**
+   * The patient a call acts on, named by their document number (ADR 0019). Every tool that reads or
+   * changes ONE patient's records or appointments declares it, so a consumer can refuse a call for a
+   * patient who is not the person writing. Binding a document number to that person is the
+   * consumer's job — this server only says which field names the patient.
+   */
+  const actsOnPatient = (...identityFields: string[]) =>
+    ({ mode: 'subject-bound', identityFields }) as const;
+
   /** Autoagendamiento dispatch: adds `accion` + `codigo_servicio` (context); the materializer injects `token`. */
   const call = (ctx: Ctx, accion: string, fields: Record<string, unknown>) =>
     client.callScheduling(ctx.request, {
@@ -75,6 +84,7 @@ export function buildHimedTools(
       'Create a patient in HiMed (idempotent: also confirms an existing patient). Required by the ' +
       'scheduling flow, which can only book patients that already exist.',
     credentialGroup: 'demograficos',
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z
       .object({
         tipoDocumento: z
@@ -109,6 +119,7 @@ export function buildHimedTools(
       "Update a patient's modifiable demographic fields. tipoDocumento + idPaciente identify the " +
       'patient and cannot be changed here (use change_patient_document for that).',
     credentialGroup: 'demograficos',
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z
       .object({
         tipoDocumento: z.string().min(1),
@@ -140,6 +151,7 @@ export function buildHimedTools(
     name: 'mcp_himed_change_patient_document',
     description: "Change a patient's document type and/or number, with an audit reason.",
     credentialGroup: 'demograficos',
+    identityPolicy: actsOnPatient('idPacienteActual', 'idPacienteNuevo'),
     input: z
       .object({
         tipoIdActual: z.string().min(1),
@@ -285,7 +297,7 @@ export function buildHimedTools(
       'Check whether a patient already exists in the clinic (required before booking). Returns the ' +
       "patient's name so the agent can confirm identity.",
     credentialGroup: 'autoagendamiento',
-    identityPolicy: { mode: 'subject-scoped' },
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z.object({ idPaciente: z.string().min(4).max(20) }).strict(),
     handler: async (args, ctx) => {
       const out = unwrapHimedScheduling(await call(ctx, 'existePaciente', args), 'patient_exists');
@@ -453,6 +465,7 @@ export function buildHimedTools(
     name: 'mcp_himed_create_appointment',
     description: 'Book an appointment for an existing patient. Confirm the patient exists first.',
     credentialGroup: 'autoagendamiento',
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z
       .object({
         idPaciente: z.string().min(4).max(20),
@@ -466,23 +479,21 @@ export function buildHimedTools(
         observaciones: z.string().optional(),
         nombrePideCita: z.string().optional(),
         apellidoPideCita: z.string().optional(),
+        // Required: who is asking for the appointment is a clinical-record fact the agent states from
+        // the conversation, never one this server assumes for it.
         parentescoPideCita: z
           .string()
-          .optional()
+          .min(1)
           .describe(
-            'Relationship catalog code — 15 = patient books own, 17 = unknown (default 15)',
+            'Relationship of whoever asks for the appointment to the patient (HiMed catalog code): ' +
+              '15 = the patient books their own, 17 = unknown. Ask if it is not clear.',
           ),
       })
       .strict(),
     handler: async (args, ctx) => {
-      // HiMed requires `parentescoPideCita` (15 = patient books their own; 17 = unknown); default 15 for
-      // a self-booking. `strModulo:'himed'` and the canonical field spellings are sandbox-verified.
+      // `strModulo:'himed'` and the canonical field spellings are sandbox-verified.
       const out = unwrapHimedScheduling(
-        await call(ctx, 'CrearCita', {
-          ...args,
-          parentescoPideCita: args.parentescoPideCita ?? '15',
-          strModulo: 'himed',
-        }),
+        await call(ctx, 'CrearCita', { ...args, strModulo: 'himed' }),
         'create_appointment',
       );
       return out.ok ? ok(out.data) : err(out.code, out.message);
@@ -494,7 +505,7 @@ export function buildHimedTools(
     description:
       "List a patient's appointments (also the primitive the reminder verifier re-reads).",
     credentialGroup: 'autoagendamiento',
-    identityPolicy: { mode: 'subject-scoped' },
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z
       .object({
         idPaciente: z.string().min(4).max(20),
@@ -514,6 +525,7 @@ export function buildHimedTools(
     name: 'mcp_himed_cancel_appointment',
     description: "Cancel a patient's appointment.",
     credentialGroup: 'autoagendamiento',
+    identityPolicy: actsOnPatient('idPaciente'),
     input: z
       .object({
         idCita: z.string().min(1),

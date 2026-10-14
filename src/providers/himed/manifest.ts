@@ -14,8 +14,11 @@ export const himedManifest: ProviderManifest = {
   displayName: 'HiMed',
   category: 'health',
   logoUrl: '/assets/himed.svg',
-  schemaVersion: '2026-09-25',
-  providerVersion: '0.3.0',
+  // Bumped (2026-10-14 review): every tool that reads or changes one patient publishes a
+  // `subject-bound` identityPolicy on `idPaciente` (the two reads were mislabeled `subject-scoped`), and
+  // create_appointment requires `parentescoPideCita` instead of defaulting it.
+  schemaVersion: '2026-10-14',
+  providerVersion: '0.4.0',
   connectionProbe: { tool: `mcp_${SLUG}_list_locations` },
   accountContextKeys: ['codigo_servicio'],
 };

@@ -58,13 +58,54 @@ describe('HiMed unified provider — credential groups', () => {
     );
   });
 
-  it('publishes subject-scoped identityPolicy on the patient-exposing scheduling reads', () => {
+  it('every tool that reads or changes one patient names the patient field (subject-bound)', () => {
     const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
     const byName = Object.fromEntries(provider.listTools().map((t) => [t.name, t]));
-    expect(byName['mcp_himed_patient_exists']?.identityPolicy).toEqual({ mode: 'subject-scoped' });
-    expect(byName['mcp_himed_list_patient_appointments']?.identityPolicy).toEqual({
-      mode: 'subject-scoped',
+    for (const name of [
+      'mcp_himed_create_patient',
+      'mcp_himed_update_patient',
+      'mcp_himed_patient_exists',
+      'mcp_himed_create_appointment',
+      'mcp_himed_list_patient_appointments',
+      'mcp_himed_cancel_appointment',
+    ]) {
+      expect(byName[name]?.identityPolicy, name).toEqual({
+        mode: 'subject-bound',
+        identityFields: ['idPaciente'],
+      });
+    }
+    expect(byName['mcp_himed_change_patient_document']?.identityPolicy).toEqual({
+      mode: 'subject-bound',
+      identityFields: ['idPacienteActual', 'idPacienteNuevo'],
     });
+  });
+
+  it('a tool that takes a patient document never ships without an identity policy', () => {
+    // The guard for the next tool: any input naming a patient document must declare whose it is.
+    const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
+    const unmarked = provider
+      .listTools()
+      .filter((t) => JSON.stringify(t.inputSchema).includes('idPaciente') && !t.identityPolicy)
+      .map((t) => t.name);
+    expect(unmarked).toEqual([]);
+  });
+
+  it('create_appointment requires parentescoPideCita rather than assuming the patient books', async () => {
+    const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(201, {}) });
+    const res = await provider.callTool(
+      'mcp_himed_create_appointment',
+      {
+        idPaciente: '11111111',
+        idSede: 1,
+        idUsuario: '42',
+        fechaCita: '08-10-2026',
+        horaInicioCita: '09:00:00',
+        modalidadAtencion: 1,
+      },
+      ctx(),
+    );
+    expect(res.kind).toBe('error');
+    if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
   });
 
   it('create_patient (demograficos group) injects the Demográficos secret as body.api_key', async () => {
@@ -136,6 +177,7 @@ describe('HiMed unified provider — credential groups', () => {
         fechaCita: '08-10-2026',
         horaInicioCita: '09:00:00',
         modalidadAtencion: 1,
+        parentescoPideCita: '15',
       },
       ctx(),
     );

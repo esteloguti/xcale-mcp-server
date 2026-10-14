@@ -322,7 +322,7 @@ input: z.object({
   observaciones: z.string().optional(),
   nombrePideCita: z.string().optional(), // si un tercero agenda por el paciente
   apellidoPideCita: z.string().optional(),
-  parentescoPideCita: z.string().optional(), // catálogo de parentesco ("17")
+  parentescoPideCita: z.string().min(1), // requerido (revisión 2026-10-14): 15 = el paciente agenda para sí, 17 = desconocido; el agente lo dice, el servidor no lo asume
   // strModulo lo fija el adapter ("himed") — no lo ve el modelo
 }).strict(); // "CrearCita"
 ```
