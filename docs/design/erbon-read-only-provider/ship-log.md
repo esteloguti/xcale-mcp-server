@@ -19,7 +19,7 @@ delivery (the durable username/password stay in the backend's Rail A; this serve
 single-use nonce for the minted JWT). `hotelID` is strict call context, never a tool argument. Data
 returned verbatim; errors never echo Erbon's body (`unwrapErbon`: operation label + HTTP status).
 
-## What shipped (12 tools)
+## What shipped (12 tools, plus `list_currencies` — see the addendum below)
 
 | Tool                                                               | Agent menu      | Purpose                                                                                               |
 | ------------------------------------------------------------------ | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -30,9 +30,14 @@ returned verbatim; errors never echo Erbon's body (`unwrapErbon`: operation labe
 | `search_guest`, `create_guest`                                     | ❌ controlPlane | Resolve / register the holder                                                                         |
 | `create_booking`                                                   | ❌ controlPlane | One reservation per call — **irreversible** (no cancel/modify API)                                    |
 | `get_booking`, `search_booking`                                    | ❌ controlPlane | Read back; find ours by voucher (`onlineSaleChannelNumber`, filtered server-side)                     |
+| `list_currencies` _(added 2026-10-12)_                             | ❌ controlPlane | The hotel's currencies (`currencyId` → ISO code), for the backend CRM import; see the addendum        |
 
 Also: the provider logo (`assets/erbon.webp`, `logoUrl` in the manifest); `schemaVersion`
 2026-10-06, `providerVersion` 0.3.0.
+
+## Addendum — `list_currencies` (CRM feed, 2026-10-12)
+
+A 13th tool, `list_currencies` (`controlPlane`, no arguments, backend-only): `GET /currencies`, returned verbatim (`id`, `code`, `description`, `symbol`, `isDefault`). A booking row names its currency only by `currencyId`; the backend CRM history import (xcale-backend `docs/design/erbon-crm/`, #1499) maps it to the ISO code to record an amount. **Deploy this before running that import**: without it the import records every stay with no amount, and the import is idempotent, so those stays are not corrected by a later re-run. Tested (`erbon.test.ts`: backend-only, scoped to the hotel, no arguments).
 
 ## Reviews
 
@@ -60,6 +65,9 @@ on `dev` with #123 (the standalone PR #126 carried the same three commits).
   header (the write path is live, backend-only).
 - `search_booking` now requires at least one filter: unfiltered, it returned every booking of the
   hotel. Both consumer calls always filter (`bookingNumber`, `onlineSaleChannelNumber`).
+- Review note on #127, fixed after release (`fix/erbon-search-booking-empty-filter`): a text filter
+  must be non-blank — `""` or spaces passed the "at least one filter" check and would have reached
+  Erbon as an empty header. Every text filter is now trimmed and refused when empty.
 
 ## Deploy verification (prod)
 
