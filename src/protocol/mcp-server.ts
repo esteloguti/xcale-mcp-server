@@ -58,6 +58,9 @@ export function createMcpServer(
           description: tool.description,
           inputSchema: tool.inputSchema as Tool['inputSchema'],
           ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
+          // The SDK's `ToolSchema` names `annotations`, so the standard hint survives validation —
+          // unlike a custom top-level field, which zod strips (see `IDENTITY_POLICY_META_KEY`).
+          ...(tool.readOnly ? { annotations: { readOnlyHint: true } } : {}),
         };
       }),
     );

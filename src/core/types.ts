@@ -84,6 +84,8 @@ export interface McpToolDefinition {
   readonly identityPolicy?: ToolIdentityPolicy;
   /** Who this tool may serve — see `ToolAudience`. Absent means the provider has not classified it. */
   readonly audience?: ToolAudience;
+  /** Changes nothing at the provider — published as `annotations.readOnlyHint` (see `ToolDefinition`). */
+  readonly readOnly?: true;
 }
 
 /**

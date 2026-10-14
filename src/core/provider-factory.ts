@@ -54,6 +54,8 @@ export function createProvider<M = unknown>(spec: ProviderSpec<M>): IProvider {
       ...(t.identityPolicy ? { identityPolicy: t.identityPolicy } : {}),
       // Same rule for the audience: a provider that never classified stays byte-identical.
       ...(t.audience ? { audience: t.audience } : {}),
+      // Omitted unless declared, for the same reason: absent is the closed answer.
+      ...(t.readOnly ? { readOnly: true as const } : {}),
     }));
   const contextSchema = spec.metadataSchema ? toJsonSchema(spec.metadataSchema) : undefined;
 

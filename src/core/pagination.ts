@@ -87,6 +87,8 @@ export function definePaginatedList<I extends z.ZodObject<z.ZodRawShape>, T, M =
   identityPolicy?: ToolIdentityPolicy;
   /** Forwarded verbatim — the warning one field up is why this line exists. */
   audience?: ToolAudience;
+  /** Forwarded verbatim — the trap above applies to every declarative field (`ToolDefinition.readOnly`). */
+  readOnly?: true;
   handler: (
     args: z.infer<I> & PaginationInput,
     ctx: ToolHandlerContext<M>,
@@ -101,6 +103,7 @@ export function definePaginatedList<I extends z.ZodObject<z.ZodRawShape>, T, M =
     ...(def.requiredScopes ? { requiredScopes: def.requiredScopes } : {}),
     ...(def.identityPolicy ? { identityPolicy: def.identityPolicy } : {}),
     ...(def.audience ? { audience: def.audience } : {}),
+    ...(def.readOnly ? { readOnly: def.readOnly } : {}),
     handler: async (args, ctx) => {
       const result = await def.handler(args as z.infer<I> & PaginationInput, ctx);
       if (!result.ok) {
