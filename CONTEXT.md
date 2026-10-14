@@ -63,7 +63,8 @@ redacted like the token) or any consumer/tenant identity — it carries provider
 (e.g. `propertyID`).
 
 **`PROVIDER_AUTH_EXPIRED`** — the typed, machine-readable code returned in a `tools/call` result
-with `isError: true` (in `structuredContent`) when a provider returns 401/403. The backend maps
+with `isError: true` (in `structuredContent`) when a reconnect would fix the failure — a revoked or
+expired credential; a 401/403 a reconnect cannot fix is `PROVIDER_ERROR`. The backend maps
 this code → Rail A's `markConnectionAuthFailure()` → reconnect prompt. _Avoid_: signalling
 expiry as a JSON-RPC protocol error (rejected — it's a tool-execution failure, not protocol).
 
@@ -90,8 +91,8 @@ auth even after a provider migrates to MCP.
 type in this repo.
 
 **Provider Self-Containment** — architectural principle #1: adding a provider means working
-almost exclusively in `src/providers/{slug}/`; the only permitted backend touch is generic config
-(secrets/env) or business policy, never provider-specific code. _Avoid_: editing backend logic to
+almost exclusively in `src/providers/{slug}/`; what the backend keeps per provider is registration
+data or business policy, never provider-specific logic. _Avoid_: editing backend logic to
 support a standard provider (that is the alarm signal). See `docs/architecture-review.md` §0.
 
 **Capability catalog** — what `server/discover` publishes: per provider, its `slug`, display
