@@ -1,5 +1,10 @@
 # HiMed Provider — Feature Design
 
+> ⚠️ **Diseño reemplazado (2026-10-02).** Este documento describe el modelo de **dos/tres providers**
+> (`himed`, `himed-directory`, `himed-scheduling`), que se revirtió. HiMed es **un solo provider con
+> grupos de credenciales** — ver el ADR [`himed-multi-credential-provider`](../../adr/himed-multi-credential-provider.md).
+> Las secciones sobre endpoints, campos y evidencia de sandbox siguen vigentes; las de providers separados, no.
+
 > **Feature**: Provider MCP de HiMed — expone las capacidades clínicas de HiMed (pacientes y citas) como tools consumibles por los agentes de xcale.
 > **Priority**: P1 High
 > **Owner**: Sara Estrada (integración) · Mateo (release owner / decisiones comerciales y legales)

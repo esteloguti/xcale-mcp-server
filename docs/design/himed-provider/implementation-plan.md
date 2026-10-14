@@ -1,5 +1,10 @@
 # HiMed — Implementation Plan (himed + himed-scheduling)
 
+> ⚠️ **Diseño reemplazado (2026-10-02).** Este documento describe el modelo de **dos/tres providers**
+> (`himed`, `himed-directory`, `himed-scheduling`), que se revirtió. HiMed es **un solo provider con
+> grupos de credenciales** — ver el ADR [`himed-multi-credential-provider`](../../adr/himed-multi-credential-provider.md).
+> Las secciones sobre endpoints, campos y evidencia de sandbox siguen vigentes; las de providers separados, no.
+
 > **Inputs**: [`feature-design.md`](./feature-design.md) · [`api-contract.md`](./api-contract.md) · [`grill-notes.md`](./grill-notes.md)
 > **ADR requerido**: body-placement (nuevo, ver Slice 0). **Last updated**: 2026-09-24
 >

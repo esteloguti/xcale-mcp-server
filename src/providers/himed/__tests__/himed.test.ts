@@ -512,6 +512,16 @@ describe('HiMed per-group credential probes (connect verifies EVERY token)', () 
     if (res.kind === 'error') expect(res.code).toBe(ProviderErrorCode.PROVIDER_UNAVAILABLE);
   });
 
+  it.each([404, 429, 409])(
+    'verify_demograficos does not vouch for a token on an unexpected HTTP %i',
+    async (status) => {
+      // Only the expected 400 comes after HiMed's token check; anything else proves nothing.
+      const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(status, {}) });
+      const res = await provider.callTool('mcp_himed_verify_demograficos', {}, ctx());
+      expect(res.kind).toBe('error');
+    },
+  );
+
   it('verify_autoagendamiento is a read: a good token answers, a bad one is AUTH_EXPIRED', async () => {
     const ok = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, [{ cantidad: 0 }]) });
     expect((await ok.callTool('mcp_himed_verify_autoagendamiento', {}, ctx())).kind).toBe(

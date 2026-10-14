@@ -1,3 +1,4 @@
+import { loadConfig } from '../../config';
 import type { FetchLike } from '../../core/http';
 import { createProvider } from '../../core/provider-factory';
 import type { IProvider } from '../../core/provider-port';
@@ -35,22 +36,27 @@ export function createHimedProvider(deps: HimedProviderDeps = {}): IProvider {
 }
 
 /**
- * Default instance registered in src/providers/index.ts. `HIMED_BASE_URL` (Demográficos + directory) and
- * `HIMED_SCHEDULING_BASE_URL` (Autoagendamiento) come from each environment's Doppler config — the
- * sandbox (`demo.medsas.co/...`, `demo-notificaciones.medsas.co/...`) in dev, HiMed's production hosts in
- * prd. There is no fallback: an unset host makes HiMed's tools fail closed (see client.ts), and the
- * server says so at boot instead of at a clinic's first booking. The rest of the server is unaffected.
+ * Default instance registered in src/providers/index.ts. The two hosts are deployment config
+ * (`loadConfig`: `HIMED_BASE_URL` for Demográficos + directory, `HIMED_SCHEDULING_BASE_URL` for
+ * Autoagendamiento) — the sandbox (`demo.medsas.co/...`, `demo-notificaciones.medsas.co/...`) in dev,
+ * HiMed's production hosts in prd. There is no fallback: an unset host makes HiMed's tools fail closed
+ * (see client.ts), and the server says so at boot instead of at a clinic's first booking. The rest of
+ * the server is unaffected.
  */
-const missingHosts = ['HIMED_BASE_URL', 'HIMED_SCHEDULING_BASE_URL'].filter((k) => !process.env[k]);
-if (missingHosts.length > 0 && process.env.NODE_ENV !== 'test') {
+const { himedBaseUrl, himedSchedulingBaseUrl, nodeEnv } = loadConfig();
+const missingHosts = [
+  ['HIMED_BASE_URL', himedBaseUrl],
+  ['HIMED_SCHEDULING_BASE_URL', himedSchedulingBaseUrl],
+]
+  .filter(([, value]) => !value)
+  .map(([name]) => name);
+if (missingHosts.length > 0 && nodeEnv !== 'test') {
   console.warn(
     `[himed] ${missingHosts.join(', ')} not set — HiMed tools will fail closed until configured.`,
   );
 }
 
 export const himedProvider = createHimedProvider({
-  ...(process.env.HIMED_BASE_URL ? { baseUrl: process.env.HIMED_BASE_URL } : {}),
-  ...(process.env.HIMED_SCHEDULING_BASE_URL
-    ? { schedulingBaseUrl: process.env.HIMED_SCHEDULING_BASE_URL }
-    : {}),
+  ...(himedBaseUrl ? { baseUrl: himedBaseUrl } : {}),
+  ...(himedSchedulingBaseUrl ? { schedulingBaseUrl: himedSchedulingBaseUrl } : {}),
 });

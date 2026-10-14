@@ -252,8 +252,13 @@ export function buildHimedTools(
       if (res.errorCode === ProviderErrorCode.PROVIDER_UNAVAILABLE) {
         return err(res.errorCode, `HiMed verify_demograficos failed (HTTP ${res.status})`);
       }
-      // Any other answer (400 "Los datos no son validos") came AFTER the token check passed.
-      return ok({ verified: true });
+      // Only the expected 400 ("Los datos no son validos") proves the token: it comes AFTER the token
+      // check passed. Anything else (404, 429, an unexpected shape) vouches for nothing — fail closed.
+      if (res.status === 400) return ok({ verified: true });
+      return err(
+        ProviderErrorCode.PROVIDER_ERROR,
+        `HiMed verify_demograficos got an unexpected answer (HTTP ${res.status}) — token not verified`,
+      );
     },
   });
 
