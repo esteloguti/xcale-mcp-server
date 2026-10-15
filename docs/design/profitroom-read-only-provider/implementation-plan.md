@@ -18,7 +18,7 @@ Done means: `tools/list` shows the five menu tools and not `get_stay_prices`. A 
 
 ## Phase 0 — `none` auth variant (core)
 
-**Branch**: the current `docs/142-profitroom-provider-design` (already carries the ADR, `CONTEXT.md` terms and these design docs). PR title: `feat(core): credential-less providers — the none auth variant`.
+**Branch**: `feat/implementation-profitroom-provider`, cut from the docs branch `docs/142-profitroom-provider-design` (matesjara/xcale-mcp-server#143), which stays docs-only and is this branch's base. Its PR targets `dev` (no stacked PRs) and merges **after** #143; until then its diff also shows the docs commits. PR title: `feat(core): credential-less providers — the none auth variant`.
 
 ### 0.1 Target tree
 
