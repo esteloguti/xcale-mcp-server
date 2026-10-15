@@ -1,6 +1,7 @@
 import { ProviderErrorCode } from '../../core/errors';
 import { err, ok, type ToolOutcome } from '../../core/tool';
 import type { ClientResult, ProfitroomClient, SendRequest } from './client';
+import { buildBookingUrl } from './booking-url';
 import { translated } from './mappers';
 import {
   type AvailabilityResponse,
@@ -37,6 +38,7 @@ export async function runStay(
   client: ProfitroomClient,
   scope: StayScope,
   stay: StayRequest,
+  withPrices: boolean,
 ): Promise<ToolOutcome> {
   const room = stay.rooms[0] as StayRequest['rooms'][number];
   const childrenAges = [...(room.childrenAges ?? [])];
@@ -73,6 +75,8 @@ export async function runStay(
   if (!availability.ok) return err(availability.code, availability.message);
 
   const occupancy = { adults: room.adults, childrenAges };
+  const currency = scope.details.defaultCurrency.code;
+  const money = withPrices ? taxMode(scope.details, currency) : {};
   // One group per room the engine suggests. More than one, or one that does not echo our party, means
   // the engine re-split it: v1 quotes one room, so no partial price for a different party (§C.4).
   if (!pricedAsRequested(availability.data, occupancy)) {
@@ -80,6 +84,7 @@ export async function runStay(
       checkIn: stay.checkIn,
       checkOut: stay.checkOut,
       occupancy,
+      ...money,
       available: false,
       reason: 'party_does_not_fit_one_room',
       proposals: [],
@@ -95,17 +100,67 @@ export async function runStay(
   if (!catalog.ok) return err(catalog.code, catalog.message);
   const { rooms, offers } = catalog.data;
 
-  const proposals = found.map(({ proposal, roomCount }) =>
-    joinProposal(scope, rooms, offers, proposal, roomCount),
-  );
+  const joined = found.map(({ proposal, roomCount }) => ({
+    proposal,
+    out: joinProposal(scope, rooms, offers, proposal, roomCount),
+  }));
+
+  let proposals: unknown[] = joined.map((j) => j.out);
+  if (withPrices) {
+    // A price we would hand on must be a real amount in the hotel's currency — anything else is drift.
+    const bad = found.find(
+      ({ proposal: p }) =>
+        p.price.currency !== currency || !Number.isFinite(p.price.amount) || p.price.amount <= 0,
+    );
+    if (bad !== undefined) {
+      return err(
+        ProviderErrorCode.PROVIDER_ERROR,
+        `unexpected price from Profitroom (RoomID ${bad.proposal.RoomID}: ${bad.proposal.price.amount} ${bad.proposal.price.currency}, hotel currency ${currency})`,
+      );
+    }
+    proposals = joined.map(({ proposal: p, out }) => ({
+      ...out,
+      price: p.price,
+      originalPrice: p.originalPrice,
+      discounts: p.discounts,
+      bookingUrl: buildBookingUrl({
+        locale: scope.locale,
+        hotelKey: scope.hotelKey,
+        checkIn: stay.checkIn,
+        checkOut: stay.checkOut,
+        adults: room.adults,
+        childrenAges,
+        currency,
+        RoomID: p.RoomID,
+        OfferID: p.OfferID,
+        details: scope.details,
+      }),
+    }));
+  }
 
   return ok({
     checkIn: stay.checkIn,
     checkOut: stay.checkOut,
     occupancy,
+    ...money,
     available: proposals.length > 0,
     proposals,
   });
+}
+
+/**
+ * The hotel's tax presentation, verbatim plus one derived flag. `be.taxesPresentationMode: "net"` means
+ * the engine's prices EXCLUDE taxes it adds at checkout, and no endpoint states how much (contract §0).
+ * An absent mode is reported as `null` and treated as not-included — the safe reading for a quote.
+ */
+function taxMode(details: Details, currency: string) {
+  const mode = details.config['be.taxesPresentationMode'];
+  const taxesPresentationMode = typeof mode === 'string' ? mode : null;
+  return {
+    currency,
+    taxesPresentationMode,
+    taxesIncluded: taxesPresentationMode !== null && taxesPresentationMode !== 'net',
+  };
 }
 
 /** The hotel's calendar date at `epochMs`, `YYYY-MM-DD`, in its IANA time zone. */

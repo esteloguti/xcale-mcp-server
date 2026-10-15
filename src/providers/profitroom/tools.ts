@@ -173,7 +173,26 @@ export function buildProfitroomTools(
       handler: async (args, ctx) => {
         const hotel = await loadHotel(client, ctx.request, ctx.metadata, args.locale);
         if (!hotel.ok) return err(hotel.code, hotel.message);
-        return runStay(client, { request: ctx.request, now, ...hotel.data }, args);
+        return runStay(client, { request: ctx.request, now, ...hotel.data }, args, false);
+      },
+    }),
+    tool({
+      // BACKEND-ONLY (`controlPlane`, the money guard — as Erbon's get_rate_prices): out of `listTools()`,
+      // in `routableToolNames()`. The consumer turns this into its `StayQuote`; the agent never narrates
+      // a raw, pre-tax engine price (feature design §6.2, contract §C.2).
+      name: `mcp_${SLUG}_get_stay_prices`,
+      description:
+        'BACKEND-ONLY. The check_availability proposals with money: each adds `price` (whole stay, this ' +
+        'party, verbatim), `originalPrice`, `discounts` and a `bookingUrl` that opens the hotel engine ' +
+        'with the stay pre-filled. Top level adds `currency`, the verbatim `taxesPresentationMode` and ' +
+        '`taxesIncluded` (false when the engine shows prices net of taxes it adds at checkout).',
+      controlPlane: true,
+      input: stayInput,
+      readOnly: true,
+      handler: async (args, ctx) => {
+        const hotel = await loadHotel(client, ctx.request, ctx.metadata, args.locale);
+        if (!hotel.ok) return err(hotel.code, hotel.message);
+        return runStay(client, { request: ctx.request, now, ...hotel.data }, args, true);
       },
     }),
   ];

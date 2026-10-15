@@ -651,3 +651,78 @@ describe('check_availability', () => {
     expect(r.kind).toBe('success');
   });
 });
+
+describe('get_stay_prices (backend-only money guard)', () => {
+  it('is routable by the backend but absent from the agent menu', () => {
+    const provider = createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl });
+    expect(provider.listTools().map((t) => t.name)).not.toContain('mcp_profitroom_get_stay_prices');
+    expect(provider.routableToolNames()).toContain('mcp_profitroom_get_stay_prices');
+  });
+
+  it('adds the live price, the tax mode and a pre-filled booking link to each proposal', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_get_stay_prices',
+      stay({ locale: 'es' }),
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: {
+        currency: 'COP',
+        taxesPresentationMode: 'net',
+        taxesIncluded: false,
+        available: true,
+        proposals: [
+          {
+            OfferID: 380900,
+            RoomID: 230226,
+            room: { name: 'Cabaña Doble con Jacuzzi' },
+            price: { amount: 1411000, currency: 'COP' },
+            originalPrice: { amount: 1510000, currency: 'COP' },
+            discounts: [{ amount: -99000, availableTo: '2026-10-30T00:00:00-05:00' }],
+            bookingUrl:
+              'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&currency=COP&room-id=230226&offer-id=380900',
+          },
+        ],
+      },
+    });
+  });
+
+  it('puts children in the link the way this hotel’s engine reads them (classic picker)', async () => {
+    const { fetchImpl } = fakeEngine({ availability: { body: fixture('availability-child') } });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_get_stay_prices',
+      stay({ rooms: [{ adults: 2, childrenAges: [1] }] }),
+      callCtx(),
+    );
+
+    const url = (r as { data: { proposals: { bookingUrl: string }[] } }).data.proposals[0]
+      ?.bookingUrl;
+    expect(url).toBe(
+      'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&r1_child0-2=1&currency=COP&room-id=230226&offer-id=380900',
+    );
+  });
+
+  function withPrice(price: unknown) {
+    const body = structuredClone(fixture('availability')) as {
+      proposals: { proposal: Record<string, unknown> }[];
+    }[];
+    (body[0]?.proposals[0]?.proposal as Record<string, unknown>).price = price;
+    return body;
+  }
+
+  it.each([
+    ['a price in another currency', { amount: 350, currency: 'USD' }],
+    ['a zero price', { amount: 0, currency: 'COP' }],
+  ])('fails closed on %s — never hands it on', async (_case, price) => {
+    const { fetchImpl } = fakeEngine({ availability: { body: withPrice(price) } });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_get_stay_prices',
+      stay(),
+      callCtx(),
+    );
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.PROVIDER_ERROR });
+  });
+});
