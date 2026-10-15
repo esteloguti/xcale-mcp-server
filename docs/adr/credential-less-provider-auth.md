@@ -42,8 +42,10 @@ Runtime consequences, all confined to the existing exhaustive switches:
 
 - **Materialization:** a `none` descriptor returns the request with no auth applied **before** the
   reveal line, so it never calls `.reveal()`. The single reveal statement stays where it is (the
-  credential-boundary CI grep is per file and unaffected), and the switch gains a `case 'none'` only
-  to keep `assertNever` exhaustive.
+  credential-boundary CI grep is per file and unaffected), and the early return narrows `none` out of
+  the switch, so `assertNever` stays exhaustive with no unreachable case. The variant declares
+  `credentialDelivery?: never` so `auth.credentialDelivery` (read in `src/protocol/mcp-server.ts:85`)
+  stays valid on the union without touching the protocol layer.
 - **Credential Resolution:** unchanged. A `none` provider resolves like `forwarded`; whatever
   arrives in `X-Provider-Token` (normally nothing) is wrapped, ignored and never revealed.
 - **Conformance:** `case 'none'` has nothing to assert beyond the existing serializable-data check.

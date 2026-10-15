@@ -24,40 +24,50 @@ Done means: `tools/list` shows the five menu tools and not `get_stay_prices`. A 
 
 ```
 src/core/
-  provider-port.ts                         MODIFIED
-  auth/authentication-materializer.ts      MODIFIED
-  auth/__tests__/authentication-materializer.test.ts   MODIFIED
-  testing/provider-conformance.ts          MODIFIED
-  __tests__/catalog.test.ts                MODIFIED
-docs/adr/credential-less-provider-auth.md  NEW (written)
-docs/adr/README.md                         MODIFIED (written)
-CONTEXT.md                                 MODIFIED (written)
-docs/design/profitroom-read-only-provider/ NEW (written)
+  provider-port.ts                              MODIFIED
+  auth/authentication-materializer.ts           MODIFIED
+  testing/provider-conformance.ts               MODIFIED
+  __tests__/credential-less-provider.test.ts    NEW
+docs/adr/credential-less-provider-auth.md       NEW
+docs/adr/README.md                              MODIFIED
+CONTEXT.md                                      MODIFIED
+docs/design/profitroom-read-only-provider/      NEW
 ```
 
-### 0.2 Per-file changes
+### 0.2 Per-file changes (as built 2026-10-14)
 
-| File                                              | Symbol                                           | Change    | Intent                                                                                                                                                                                               | Seam                                                                                                      |
-| :------------------------------------------------ | :----------------------------------------------- | :-------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
-| `src/core/provider-port.ts:16`                    | `ProviderAuthDescriptor`                         | MODIFIED  | Add union member `{ readonly type: 'none' }`: no `fields`, no `credentialDelivery`                                                                                                                   | Every `switch (auth.type)` becomes a compile error until handled                                          |
-| `src/core/auth/authentication-materializer.ts:18` | `materialize(auth, resolved, spec): HttpRequest` | MODIFIED  | Return the plain request when `auth.type === 'none'`, **before** the reveal at `:25`. Add `case 'none'` to the switch at `:27` (unreachable, keeps `assertNever` exhaustive). Update the doc comment | Single reveal statement unchanged; CI grep is per file (`docs/security/credential-boundary-review.md:75`) |
-| `src/core/testing/provider-conformance.ts:16`     | `assertAuthDescriptorShape(auth, label): void`   | MODIFIED  | `case 'none'`: nothing to assert beyond the existing JSON round-trip                                                                                                                                 | Conformance for every provider                                                                            |
-| `src/protocol/mcp-server.ts:85`                   | —                                                | UNCHANGED | `credentialDelivery ?? 'forwarded'` already covers `none` (no field); the empty-token wrap from `src/auth/token.ts:9` is never revealed                                                              | —                                                                                                         |
+| File                                              | Symbol                                           | Change        | Intent                                                                                                                                 | Seam                                                                                                      |
+| :------------------------------------------------ | :----------------------------------------------- | :------------ | :------------------------------------------------------------------------------------------------------------------------------------- | :-------------------------------------------------------------------------------------------------------- |
+| `src/core/provider-port.ts:16`                    | `ProviderAuthDescriptor`                         | MODIFIED      | New first member `{ readonly type: 'none'; readonly credentialDelivery?: never }`                                                      | `credentialDelivery?: never` keeps `src/protocol/mcp-server.ts:85` compiling untouched                    |
+| `src/core/auth/authentication-materializer.ts:18` | `materialize(auth, resolved, spec): HttpRequest` | MODIFIED      | Early `return plainRequest(...)` for `none` **before** the reveal; TS narrowing removes `none` from the switch, so no unreachable case | Single reveal statement unchanged (CI grep is per file, `docs/security/credential-boundary-review.md:75`) |
+| `src/core/auth/authentication-materializer.ts`    | `plainRequest(spec, headers, url): HttpRequest`  | NEW (private) | The request-building tail, shared by `none` and the authenticated path                                                                 | —                                                                                                         |
+| `src/core/testing/provider-conformance.ts:16`     | `assertAuthDescriptorShape(auth, label): void`   | MODIFIED      | `case 'none'`: nothing to assert beyond the JSON round-trip                                                                            | Conformance for every provider                                                                            |
+| `src/protocol/mcp-server.ts:85`                   | —                                                | UNCHANGED     | `credentialDelivery ?? 'forwarded'` resolves `none` like `forwarded`; the wrapped token is never revealed                              | —                                                                                                         |
 
-### 0.3 Tests
+### 0.3 Tests (as built)
 
-| File                                                          | Test                                                  | Asserts                                                                                                                  |
-| :------------------------------------------------------------ | :---------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------- |
-| `src/core/auth/__tests__/authentication-materializer.test.ts` | `none: sends the request untouched and never reveals` | headers and URL equal the spec; a `SecretString` whose `reveal` is spied is never called                                 |
-| `src/core/__tests__/catalog.test.ts`                          | `publishes a none descriptor verbatim`                | a test provider with `auth: { type: 'none' }` appears in `buildCatalog` as `{ type: 'none' }` and passes the secret scan |
-| conformance                                                   | via an inline test provider                           | `runProviderConformance` passes for a `none` provider                                                                    |
+One file, through the highest seam (`createProvider` → `callTool` → real materializer → injected `fetchImpl`), instead of the three per-file tests first planned: it covers the same behaviors once, end to end.
+
+| `src/core/__tests__/credential-less-provider.test.ts`                                | Asserts                                                                                                  |
+| :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| `sends its requests untouched — no auth header, no credential in the URL`            | URL is the handler's; header keys are exactly `accept` (added by the transport) + the handler's own      |
+| `never reveals whatever arrived in the credential slot`                              | a spied `SecretString.reveal` is never called; the stray token appears nowhere in the request            |
+| `passes provider conformance`                                                        | `runProviderConformance` green for a `none` provider                                                     |
+| `is published in the catalog as { type: none } — no fields, no secret, context only` | `buildCatalog` entry `authDescriptor` equals `{ type: 'none' }`; `contextSchema` carries the routing key |
 
 ### 0.4 Definition of Done (phase 0)
 
-- [ ] `npm run typecheck` clean
-- [ ] `npm test` green (new tests + all existing providers' conformance)
-- [ ] `npm run format:check` clean
+- [x] `npm run typecheck` clean (2026-10-14)
+- [x] `npm test` green: 41 files, 549 tests, incl. every provider's conformance (2026-10-14)
+- [x] `npm run format:check` clean (2026-10-14)
 - [ ] PR opened as Sarasaenz12, reviewed and merged to `dev` by Mateo
+
+### 0.5 Build log
+
+| Slice                                                                   | Red                                                     | Green                       | Note                                                                                                                                                                                                                                                                                                                     |
+| :---------------------------------------------------------------------- | :------------------------------------------------------ | :-------------------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S0.1 — `none` provider sends unauthenticated requests and never reveals | `assertNever` threw in `materialize` ("Unhandled case") | union member + early return | First green attempt failed one assertion: the transport adds `accept: application/json`; the test now asserts "nothing auth-shaped" instead of an exact header set. `tsc` then flagged `mcp-server.ts:85` (`credentialDelivery` absent on `none`), fixed with `credentialDelivery?: never` rather than a protocol change |
+| S0.2 — conformance + catalog                                            | `assertNever` threw in `assertAuthDescriptorShape`      | `case 'none'`               | One red was the test's own fixture (tool name did not match the `mcp_{slug}_` prefix); fixed in the test                                                                                                                                                                                                                 |
 
 ---
 
