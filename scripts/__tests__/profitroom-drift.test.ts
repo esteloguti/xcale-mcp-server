@@ -57,17 +57,25 @@ describe('profitroom drift probe', () => {
     const report = await runDriftProbe({ fetchImpl, today: '2026-10-14' });
 
     expect(report.ok).toBe(false);
+    expect(report.drifted).toBe(true);
     expect(report.checks.find((c) => c.resource === 'calendar')).toMatchObject({
       ok: false,
+      failure: 'drift',
       detail: 'dates.0.minLOS: Required',
     });
   });
 
-  it('fails when the engine does not answer 200', async () => {
+  it('fails without calling it drift when the engine does not answer 200', async () => {
     const fetchImpl = (async () =>
       new Response('down', { status: 503 })) as unknown as typeof fetch;
     const report = await runDriftProbe({ fetchImpl, today: '2026-10-14' });
     expect(report.ok).toBe(false);
-    expect(report.checks[0]).toMatchObject({ resource: 'details', ok: false, detail: 'HTTP 503' });
+    expect(report.drifted).toBe(false);
+    expect(report.checks[0]).toMatchObject({
+      resource: 'details',
+      ok: false,
+      failure: 'unreachable',
+      detail: 'HTTP 503',
+    });
   });
 });

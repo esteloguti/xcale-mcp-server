@@ -355,7 +355,7 @@ interface StayProposal {
   OfferID: number;
   RoomID: number;
   profileId: number;
-  roomCount: number; // rooms left
+  roomCount: number; // engine's value, verbatim — meaning unconfirmed (4 observed for a room with totalRooms 1); never a count of rooms left
   room: { id: number; name: string }; // nested from list_room_types
   offer: { id: number; name: string; description?: string }; // nested from list_rates
   profile: Profile; // nested: the offer's profile with this profileId

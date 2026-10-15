@@ -27,10 +27,16 @@ jobs:
       - run: npm ci
       - name: Probe the live engine with the provider schemas
         id: probe
-        run: npx tsx scripts/profitroom-drift.ts | tee drift-report.txt
-        shell: bash -o pipefail {0}
+        # Exit 1 = drift (opens the issue); 2 = engine unreachable (the run fails, no drift issue).
+        run: |
+          set +e
+          npx tsx scripts/profitroom-drift.ts | tee drift-report.txt
+          code=${PIPESTATUS[0]}
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
+        shell: bash {0}
       - name: Open or update the drift issue
-        if: failure() && steps.probe.outcome == 'failure'
+        if: failure() && steps.probe.outputs.code == '1'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

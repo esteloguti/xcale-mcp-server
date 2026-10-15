@@ -87,7 +87,15 @@ export function createProfitroomClient(options: ProfitroomClientOptions = {}): P
           message: `unexpected response from Profitroom (${resource}: ${where})`,
         };
       }
-      if (cacheKey !== null) cache.set(cacheKey, { at: now(), data: parsed.data });
+      if (cacheKey !== null) {
+        // Sweep on write: an expired entry of a hotel nobody asks for any more is dropped here, so the
+        // long-running gateway never keeps it for good.
+        const at = now();
+        for (const [key, entry] of cache) {
+          if (at - entry.at >= CACHE_TTL_MS) cache.delete(key);
+        }
+        cache.set(cacheKey, { at, data: parsed.data });
+      }
       return { ok: true, data: parsed.data };
     },
   };

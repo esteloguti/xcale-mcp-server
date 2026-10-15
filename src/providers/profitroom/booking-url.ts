@@ -44,5 +44,9 @@ function childrenParams(details: Details, ages: readonly number[]): [string, str
   }
   // Ages were already checked to sit inside the hotel's child band (`personTypes` C) — one band.
   const band = details.personTypes.find((p) => p.type === 'C');
-  return [[`r1_child${band?.minAge ?? 0}-${band?.maxAge ?? 0}`, String(ages.length)]];
+  if (band === undefined || band.maxAge === null) {
+    // Never a link for a party the hotel cannot encode: fail rather than invent a band.
+    throw new Error('buildBookingUrl: children given but the hotel prices no child band');
+  }
+  return [[`r1_child${band.minAge ?? 0}-${band.maxAge}`, String(ages.length)]];
 }

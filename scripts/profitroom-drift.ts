@@ -7,7 +7,7 @@
  * the provider's OWN exported schemas (`src/providers/profitroom/schemas.ts`) — one definition of "the
  * shape we depend on", shared by runtime and probe, so the two can never disagree.
  *
- *   npx tsx scripts/profitroom-drift.ts   # exit 0 = no drift, exit 1 = drift or engine down
+ *   npx tsx scripts/profitroom-drift.ts   # exit 0 = no drift, 1 = drift, 2 = engine unreachable
  *
  * Run daily by `.github/workflows/profitroom-drift.yml`, which opens an issue on failure.
  * See docs/design/profitroom-read-only-provider/api-contract.md §E.
@@ -30,11 +30,15 @@ const DAY_MS = 86_400_000;
 export interface DriftCheck {
   readonly resource: string;
   readonly ok: boolean;
+  /** Why it failed: the shape changed (`drift`) or the engine did not answer 200 (`unreachable`). */
+  readonly failure?: 'drift' | 'unreachable';
   readonly detail: string;
 }
 
 export interface DriftReport {
   readonly ok: boolean;
+  /** True only when a response answered but no longer matches — an outage alone is not drift. */
+  readonly drifted: boolean;
   readonly checks: readonly DriftCheck[];
 }
 
@@ -65,7 +69,11 @@ export async function runDriftProbe(opts: DriftProbeOptions = {}): Promise<Drift
   for (const [resource, query, schema] of targets) {
     checks.push(await check(fetchImpl, resource, query, schema));
   }
-  return { ok: checks.every((c) => c.ok), checks };
+  return {
+    ok: checks.every((c) => c.ok),
+    drifted: checks.some((c) => c.failure === 'drift'),
+    checks,
+  };
 }
 
 async function check(
@@ -80,19 +88,27 @@ async function check(
     const res = await fetchImpl(url, {
       headers: { accept: 'application/json', 'x-requested-with': 'XMLHttpRequest' },
     });
-    if (!res.ok) return { resource, ok: false, detail: `HTTP ${res.status}` };
+    if (!res.ok) {
+      return { resource, ok: false, failure: 'unreachable', detail: `HTTP ${res.status}` };
+    }
     const parsed = schema.safeParse(await res.json());
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       return {
         resource,
         ok: false,
+        failure: 'drift',
         detail: issue ? `${issue.path.join('.')}: ${issue.message}` : 'unknown shape',
       };
     }
     return { resource, ok: true, detail: 'matches' };
   } catch (e) {
-    return { resource, ok: false, detail: e instanceof Error ? e.message : 'request failed' };
+    return {
+      resource,
+      ok: false,
+      failure: 'unreachable',
+      detail: e instanceof Error ? e.message : 'request failed',
+    };
   }
 }
 
@@ -105,11 +121,16 @@ async function main(): Promise<void> {
   for (const c of report.checks) {
     console.log(`${c.ok ? 'ok  ' : 'FAIL'} ${c.resource.padEnd(13)} ${c.detail}`);
   }
-  if (!report.ok) {
+  if (report.drifted) {
     console.error(
       '\nProfitroom drift detected — the provider is failing closed for the changed endpoint(s).',
     );
     process.exit(1);
+  }
+  if (!report.ok) {
+    // An outage (or a runner network failure) is not a schema change: fail the run, open no drift issue.
+    console.error('\nProfitroom engine unreachable — no drift verdict for this run.');
+    process.exit(2);
   }
 }
 

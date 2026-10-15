@@ -173,7 +173,8 @@ export function buildProfitroomTools(
         'What can be booked at the connected Profitroom hotel for a stay: `checkIn`/`checkOut` ' +
         '(YYYY-MM-DD) and ONE room with `adults` and optional `childrenAges`. Each proposal names the ' +
         'room (`room`), the rate (`offer`, whose description says what it includes) and its payment ' +
-        'and cancellation terms (`profile`), plus how many rooms are left (`roomCount`). It carries NO ' +
+        'and cancellation terms (`profile`), plus `roomCount`, the engine value — its meaning is not confirmed ' +
+        '(it is NOT a verified count of rooms left), so never tell the guest how many remain. It carries NO ' +
         'price: the price reaches the guest only through the booking flow. `available: false` means ' +
         'nothing can be sold for that stay and party.',
       input: stayInput,
