@@ -63,7 +63,7 @@ docs/design/profitroom-read-only-provider/ NEW (written)
 
 ## Phase 1 — `profitroom` provider
 
-**Branch**: `feat/142-profitroom-provider` from `dev` after phase 0 merges. Fixtures are already captured in this branch (`src/providers/profitroom/__fixtures__/`, raw 2026-10-14 responses) and move with the rebase.
+**Branch**: `feat/142-profitroom-provider` from `dev` after phase 0 merges. The raw 2026-10-14 responses are captured (uncommitted) in the design worktree under `src/providers/profitroom/__fixtures__/`; S1 commits them. If they are lost, recapture with the same queries (contract §D).
 
 ### 1.1 Target tree
 
