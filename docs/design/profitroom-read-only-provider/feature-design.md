@@ -187,12 +187,12 @@ All calls send `X-Requested-With: XMLHttpRequest` and are built from the fixed b
 ### Booking link (derived, not stored)
 
 ```
-https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/?check-in={YYYY-MM-DD}&check-out={YYYY-MM-DD}&r1_adults={n}[&{childrenParam}]&currency={code}&room-id={RoomID}&offer-id={OfferID}
+https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/{RoomID}?check-in={YYYY-MM-DD}&check-out={YYYY-MM-DD}&r1_adults={n}[&{childrenParam}]&currency={code}
 ```
 
 `{childrenParam}` depends on `details.enabledNewChildrenOccupancyPicker`: `false` (La Pausa) → `r1_child{minAge}-{maxAge}={count}` per child `personTypes` bucket (e.g. `r1_child0-2=1`); `true` → `r1_children_age={a,b}`.
 
-Verified live: dates, adults, children (`r1_child0-2=1` → "2 adultos • 1 niño") and currency pre-fill the engine. `room-id`/`offer-id` are accepted without error; whether they pre-select is **unverified** (see §9).
+Verified live: dates, adults, children (`r1_child0-2=1` → "2 adultos • 1 niño") and currency pre-fill the engine. The `{RoomID}` path segment opens the quoted room with its rates and "book now" button (verified 2026-10-14); `room-id`/`offer-id` query params pre-select nothing.
 
 ---
 
@@ -238,11 +238,11 @@ The five menu tools above are the agent's tools: read-only, guest-facing, money-
 
 ### Open Questions
 
-| #   | Question                                                                      | Owner | How to resolve                              |
-| :-- | :---------------------------------------------------------------------------- | :---- | :------------------------------------------ |
-| 1   | Do `room-id`/`offer-id` actually pre-select in the engine?                    | Sara  | Test on dates with ≥ 2 room types available |
-| 2   | Window of `X-RateLimit-Limit: 1500` (per minute? hour?)                       | Sara  | Observe headers over time                   |
-| 3   | Does the consumer support a secret-less connection and a quote-only provider? | Sara  | matesjara/xcale-backend#1599 design         |
+| #   | Question                                                                                                                 | Owner | How to resolve                      |
+| :-- | :----------------------------------------------------------------------------------------------------------------------- | :---- | :---------------------------------- |
+| 1   | ~~Do `room-id`/`offer-id` pre-select in the engine?~~ Resolved 2026-10-14: no; the `/pricelist/rooms/{RoomID}` path does | Sara  | Done                                |
+| 2   | Window of `X-RateLimit-Limit: 1500` (per minute? hour?)                                                                  | Sara  | Observe headers over time           |
+| 3   | Does the consumer support a secret-less connection and a quote-only provider?                                            | Sara  | matesjara/xcale-backend#1599 design |
 
 ---
 
