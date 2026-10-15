@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
+import { ProviderErrorCode } from '../../core/errors';
 import { err, ok, toolFactory, type ToolDefinition } from '../../core/tool';
 import type { ClientResult, ProfitroomClient, SendRequest } from './client';
-import { hotelKeyFrom, type ProfitroomContext } from './context';
+import { bookingEngineUrlContext, hotelKeyFrom, type ProfitroomContext } from './context';
 import { resolveLocale, toHotel, toOffer, toRoom } from './mappers';
 import { SLUG } from './manifest';
 import { runStay } from './stay';
@@ -83,7 +84,15 @@ export function buildProfitroomTools(
       readOnly: true,
       audience: 'customer',
       handler: async (args, ctx) => {
-        const hotel = await loadHotel(client, ctx.request, ctx.metadata, args.locale);
+        // Probe + discovery tool: the core did not validate this context (see context.ts).
+        const connectContext = bookingEngineUrlContext.safeParse(ctx.metadata);
+        if (!connectContext.success) {
+          return err(
+            ProviderErrorCode.INVALID_INPUT,
+            'bookingEngineUrl is not a Profitroom booking engine address',
+          );
+        }
+        const hotel = await loadHotel(client, ctx.request, connectContext.data, args.locale);
         if (!hotel.ok) return err(hotel.code, hotel.message);
         return ok(toHotel(hotel.data.details, hotel.data.locale, hotel.data.hotelKey));
       },
@@ -208,7 +217,7 @@ interface HotelScope {
 async function loadHotel(
   client: ProfitroomClient,
   request: SendRequest,
-  metadata: ProfitroomContext,
+  metadata: { readonly bookingEngineUrl: string },
   requestedLocale: string | undefined,
 ): Promise<ClientResult<HotelScope>> {
   const hotelKey = hotelKeyFrom(metadata.bookingEngineUrl);

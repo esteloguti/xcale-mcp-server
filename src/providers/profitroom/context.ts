@@ -30,15 +30,32 @@ function parseEngineUrl(value: string): { hotelKey: string } | null {
   return { hotelKey: match[2] as string };
 }
 
+const bookingEngineUrl = z.string().refine((v) => parseEngineUrl(v) !== null, {
+  message: 'bookingEngineUrl is not a Profitroom booking engine address',
+});
+
+/**
+ * Every call after connect carries both keys: the URL the owner pasted and the `hotelKey` the
+ * consumer discovered from `get_hotel` (`manifest.contextDiscovery`). They must agree — a context
+ * naming one hotel by URL and another by key is refused rather than guessed between.
+ */
 export const profitroomContext = z
-  .object({
-    bookingEngineUrl: z.string().refine((v) => parseEngineUrl(v) !== null, {
-      message: 'bookingEngineUrl is not a Profitroom booking engine address',
-    }),
-  })
-  .strict();
+  .object({ bookingEngineUrl, hotelKey: z.string().regex(/^[a-z0-9-]{1,64}$/) })
+  .strict()
+  .refine((c) => parseEngineUrl(c.bookingEngineUrl)?.hotelKey === c.hotelKey, {
+    message: 'hotelKey does not match the hotel in bookingEngineUrl',
+    path: ['hotelKey'],
+  });
 
 export type ProfitroomContext = z.infer<typeof profitroomContext>;
+
+/**
+ * The connect-time context: only the URL the owner pasted. `get_hotel` is the consumer's connection
+ * probe AND discovery tool, and the core exempts the discovery tool from `contextSchema` validation
+ * (`src/core/provider-factory.ts:82-87`) because the discovered key cannot exist yet. So `get_hotel`
+ * checks the URL itself with this schema — the SSRF guard must not depend on which tool is called.
+ */
+export const bookingEngineUrlContext = z.object({ bookingEngineUrl });
 
 /** The hotel key of an already-validated booking-engine URL (the context refine ran first). */
 export function hotelKeyFrom(bookingEngineUrl: string): string {

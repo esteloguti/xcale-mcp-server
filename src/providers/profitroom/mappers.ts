@@ -68,6 +68,8 @@ export function toHotel(details: Details, locale: string, hotelKey: string) {
     personTypes: details.personTypes,
     config,
     bookingEngineUrl: `https://booking.profitroom.com/${locale}/${hotelKey}`,
+    // Derived (contract §C.3): the hotel's identity, read by a consumer as `contextDiscovery`.
+    hotelKey,
   };
 }
 

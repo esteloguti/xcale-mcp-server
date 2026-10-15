@@ -13,7 +13,7 @@ import { PROVIDERS } from '../../index';
 import { runProviderConformance } from '../../../core/testing/provider-conformance';
 import { createProfitroomProvider } from '../provider';
 
-import { hotelKeyFrom, profitroomContext } from '../context';
+import { bookingEngineUrlContext, hotelKeyFrom } from '../context';
 import {
   availabilitySchema,
   calendarSchema,
@@ -38,7 +38,7 @@ describe('booking-engine URL context', () => {
     ['https://booking.profitroom.com/es/hotellapausa/home?currency=COP', 'hotellapausa'],
     ['https://booking.profitroom.com/pl/hotel-123', 'hotel-123'],
   ])('accepts %s and routes to hotel key %s', (bookingEngineUrl, key) => {
-    const parsed = profitroomContext.safeParse({ bookingEngineUrl });
+    const parsed = bookingEngineUrlContext.safeParse({ bookingEngineUrl });
     expect(parsed.success).toBe(true);
     expect(hotelKeyFrom(bookingEngineUrl)).toBe(key);
   });
@@ -54,7 +54,7 @@ describe('booking-engine URL context', () => {
     ['an API path', 'https://booking.profitroom.com/api/hotellapausa/details'],
     ['not a URL', 'hotellapausa'],
   ])('rejects %s', (_case, bookingEngineUrl) => {
-    expect(profitroomContext.safeParse({ bookingEngineUrl }).success).toBe(false);
+    expect(bookingEngineUrlContext.safeParse({ bookingEngineUrl }).success).toBe(false);
   });
 });
 
@@ -297,9 +297,10 @@ function fakeEngine(overrides: Record<string, { status?: number; body: unknown }
   return { urls, fetchImpl };
 }
 
-const callCtx = (bookingEngineUrl = LA_PAUSA): ProviderCallContext => ({
+/** A connected call: the pasted URL plus the hotelKey the consumer discovered at connect. */
+const callCtx = (bookingEngineUrl = LA_PAUSA, hotelKey = 'hotellapausa'): ProviderCallContext => ({
   credential: { secret: new SecretString('') },
-  metadata: { bookingEngineUrl },
+  metadata: { bookingEngineUrl, hotelKey },
 });
 
 // ---------------------------------------------------------------------------
@@ -742,7 +743,7 @@ describe('profitroom provider integration', () => {
     expect(provider?.auth).toEqual({ type: 'none' });
     expect(provider?.contextSchema).toMatchObject({
       properties: { bookingEngineUrl: { type: 'string' } },
-      required: ['bookingEngineUrl'],
+      required: ['bookingEngineUrl', 'hotelKey'],
     });
     expect(
       provider
@@ -756,5 +757,54 @@ describe('profitroom provider integration', () => {
       'mcp_profitroom_list_rates',
       'mcp_profitroom_list_room_types',
     ]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 0 (backend #1599) — the consumer can connect it: probe, discovery, identity.
+// ---------------------------------------------------------------------------
+
+describe('connect support for a credential-less consumer', () => {
+  it('publishes a connection probe, discovers hotelKey with it, and keys the account on hotelKey', () => {
+    const { manifest } = createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl });
+    expect(manifest.connectionProbe).toEqual({ tool: 'mcp_profitroom_get_hotel' });
+    expect(manifest.contextDiscovery).toEqual({
+      key: 'hotelKey',
+      tool: 'mcp_profitroom_get_hotel',
+      resultPath: 'hotelKey',
+    });
+    expect(manifest.accountContextKeys).toEqual(['hotelKey']);
+  });
+
+  it('get_hotel discovers hotelKey from the URL alone, as the owner pasted it', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_get_hotel',
+      {},
+      {
+        credential: { secret: new SecretString('') },
+        metadata: {
+          bookingEngineUrl: 'https://booking.profitroom.com/en/hotellapausa/home?currency=COP',
+        },
+      },
+    );
+    expect(r).toMatchObject({ kind: 'success', data: { hotelKey: 'hotellapausa' } });
+  });
+
+  it('every other tool requires the discovered hotelKey, and it must be the URL’s own', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const provider = createProfitroomProvider({ fetchImpl });
+    expect(provider.contextSchema).toMatchObject({ required: ['bookingEngineUrl', 'hotelKey'] });
+
+    const mismatched = await provider.callTool(
+      'mcp_profitroom_list_room_types',
+      {},
+      {
+        credential: { secret: new SecretString('') },
+        metadata: { bookingEngineUrl: LA_PAUSA, hotelKey: 'otherhotel' },
+      },
+    );
+    expect(mismatched).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+    expect(urls).toHaveLength(0);
   });
 });

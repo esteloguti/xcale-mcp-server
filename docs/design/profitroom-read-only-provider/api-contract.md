@@ -164,16 +164,30 @@ https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/{RoomID}?chec
 // src/providers/profitroom/auth.ts
 export const profitroomAuth = { type: 'none' } as const satisfies ProviderAuthDescriptor;
 
-// src/providers/profitroom/context.ts — published as contextSchema
-export const profitroomContext = z.object({
-  /** Public booking-engine address, e.g. https://booking.profitroom.com/es/hotellapausa */
-  bookingEngineUrl: z.string().url().refine(isProfitroomEngineUrl, {
-    message: 'bookingEngineUrl is not a Profitroom booking engine address',
-  }),
-});
-// Handlers derive the key with hotelKeyFrom(bookingEngineUrl) — a refine (not a transform) keeps the
-// published contextSchema a plain string field.
+// src/providers/profitroom/context.ts — published as contextSchema (as built 2026-10-15)
+export const profitroomContext = z
+  .object({
+    /** Public booking-engine address the owner pasted, e.g. https://booking.profitroom.com/es/hotellapausa */
+    bookingEngineUrl, // string + URL refine (rules below)
+    /** The hotel's identity, discovered by the consumer from get_hotel at connect. */
+    hotelKey: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  })
+  .strict()
+  .refine((c) => hotelKeyOf(c.bookingEngineUrl) === c.hotelKey); // they must name the same hotel
+
+// The connect-time context: the URL alone. get_hotel validates it itself (see B.1).
+export const bookingEngineUrlContext = z.object({ bookingEngineUrl });
 ```
+
+### B.1 Connect support (manifest, for a consumer's credential-less connection)
+
+| Manifest field       | Value                                                                           | Why                                                                                                                                                                           |
+| :------------------- | :------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connectionProbe`    | `{ tool: 'mcp_profitroom_get_hotel' }`                                          | Proves the pasted URL names a real Profitroom hotel before a consumer saves a connection. Without it xcale-backend's `buildCredentialConfig` refuses to register the provider |
+| `contextDiscovery`   | `{ key: 'hotelKey', tool: 'mcp_profitroom_get_hotel', resultPath: 'hotelKey' }` | The owner is asked only for the URL; the consumer reads `hotelKey` out of the probe's own response                                                                            |
+| `accountContextKeys` | `['hotelKey']`                                                                  | The account is the hotel, not the URL: `/es/hotellapausa` and `/en/hotellapausa/home` are one connection                                                                      |
+
+`get_hotel` is the discovery tool, and the core exempts it from `contextSchema` validation (`src/core/provider-factory.ts:82-87`) because `hotelKey` cannot exist yet. So it parses its own context with `bookingEngineUrlContext`: a foreign URL is still refused with `PROVIDER_INVALID_INPUT` and no upstream call. Observed live 2026-10-15: `get_hotel` with only `https://booking.profitroom.com/en/hotellapausa/home?currency=COP` → `hotelKey: "hotellapausa"`.
 
 `isProfitroomEngineUrl` / `hotelKeyFrom` rules:
 
@@ -265,6 +279,7 @@ interface Hotel {
     'be.maxRoomsPerReservation'?: string;
   };
   bookingEngineUrl: string; // derived: https://booking.profitroom.com/{locale}/{hotelKey}
+  hotelKey: string; // derived: the hotel's identity (read by a consumer as contextDiscovery)
 }
 
 // list_room_types — projection of each `rooms[]` item
