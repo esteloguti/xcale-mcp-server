@@ -6,7 +6,10 @@ import { describe, expect, it } from 'vitest';
 import type { RequestSpec } from '../../../core/auth/http-request';
 import { ProviderErrorCode } from '../../../core/errors';
 import type { RequestResult } from '../../../core/http';
+import { SecretString } from '../../../core/secret-string';
+import type { ProviderCallContext } from '../../../core/types';
 import { createProfitroomClient } from '../client';
+import { createProfitroomProvider } from '../provider';
 
 import { hotelKeyFrom, profitroomContext } from '../context';
 import {
@@ -266,5 +269,158 @@ describe('profitroom client', () => {
 
       expect(calls).toHaveLength(2);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Provider-level helpers: a fake engine answering from the live fixtures, by path.
+// ---------------------------------------------------------------------------
+
+const LA_PAUSA = 'https://booking.profitroom.com/es/hotellapausa';
+
+/** Fake engine: routes `/api/{hotel}/{resource}` to a fixture (or an override) and records each URL. */
+function fakeEngine(overrides: Record<string, { status?: number; body: unknown }> = {}) {
+  const urls: string[] = [];
+  const fetchImpl = (async (url: string) => {
+    urls.push(url);
+    const resource = new URL(url).pathname.split('/')[3] ?? '';
+    const reply = overrides[resource] ?? { body: fixture(resource) };
+    const status = reply.status ?? 200;
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      json: async () => reply.body,
+      text: async () => JSON.stringify(reply.body),
+    } as unknown as Response;
+  }) as unknown as typeof fetch;
+  return { urls, fetchImpl };
+}
+
+const callCtx = (bookingEngineUrl = LA_PAUSA): ProviderCallContext => ({
+  credential: { secret: new SecretString('') },
+  metadata: { bookingEngineUrl },
+});
+
+// ---------------------------------------------------------------------------
+// S3 — static tools: projection with Profitroom's own names (ADR 0009). Contract §C.1, §C.3.
+// ---------------------------------------------------------------------------
+
+describe('static tools', () => {
+  it('get_hotel projects details in the requested locale and derives the booking-engine URL', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_get_hotel',
+      { locale: 'es' },
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: {
+        name: 'Hotel La Pausa',
+        defaultCurrency: { code: 'COP' },
+        timeZone: 'America/Bogota',
+        defaultLocale: 'es',
+        locales: [
+          { locale: 'es', isLive: true },
+          { locale: 'en', isLive: true },
+        ],
+        personTypes: [
+          { type: 'A', minAge: null, maxAge: null },
+          { type: 'C', minAge: 0, maxAge: 2 },
+        ],
+        config: {
+          'Hotel.CheckinAfter': '15:00',
+          'Hotel.CheckoutBefore': '12:00',
+          'be.taxesPresentationMode': 'net',
+          'be.maxRoomsPerReservation': '5',
+        },
+        bookingEngineUrl: 'https://booking.profitroom.com/es/hotellapausa',
+      },
+    });
+  });
+
+  it('list_room_types projects every room in the requested locale, keeping Profitroom field names', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_room_types',
+      { locale: 'en' },
+      callCtx(),
+    );
+
+    expect(r.kind).toBe('success');
+    const rooms = (r as { data: Record<string, unknown>[] }).data;
+    expect(rooms).toHaveLength(6);
+    expect(rooms[0]).toMatchObject({
+      id: 230226,
+      name: 'Double Cabin with Jacuzzi',
+      attributes: { area: { unit: expect.any(String) } },
+      limits: { max: { occupancy: { adults: 2, children: [{ minAge: 0, maxAge: 2, count: 1 }] } } },
+      offerIds: expect.arrayContaining([380900]),
+    });
+    expect(rooms[0]).toHaveProperty('description');
+    expect(rooms[0]).not.toHaveProperty('translations');
+    expect(rooms[0]).not.toHaveProperty('gallery');
+  });
+
+  it('list_rates keeps profiles verbatim and falls back to the hotel language when a rate lacks one', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_rates',
+      { locale: 'en' },
+      callCtx(),
+    );
+
+    expect(r.kind).toBe('success');
+    const offers = (r as { data: Record<string, unknown>[] }).data;
+    const standard = offers.find((o) => o.id === 380900);
+    const lastMinute = offers.find((o) => o.id === 524038);
+    expect(standard).toMatchObject({
+      type: 'O',
+      roomIds: expect.arrayContaining([230226]),
+      profiles: [
+        {
+          profileId: 212614,
+          type: 'elastic',
+          deposit: { percentage: 30, nights: null },
+          params: { cancelTime: '7', cancelUnit: 'days', remainingPaymentType: 'upon_arrival' },
+        },
+      ],
+      restrictions: { availableTo: '2029-07-11' },
+    });
+    expect(standard?.name).not.toBe('Tarifa Estándar'); // the English translation exists
+    expect(lastMinute?.name).toBe('Oferta de primer minuto con desayuno -15%'); // es only → fallback
+  });
+
+  it('asks the engine for active rates only, as its own page does', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_rates',
+      {},
+      callCtx(),
+    );
+    expect(urls).toContain('https://booking.profitroom.com/api/hotellapausa/offers?status=1');
+  });
+
+  it('rejects a language the hotel does not offer, before reading rooms', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_room_types',
+      { locale: 'de' },
+      callCtx(),
+    );
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+    expect(urls.some((u) => u.includes('/rooms'))).toBe(false);
+  });
+
+  it('rejects a connection whose URL is not a Profitroom booking engine, without calling anyone', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_get_hotel',
+      {},
+      callCtx('https://evil.com/es/hotellapausa'),
+    );
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+    expect(urls).toHaveLength(0);
   });
 });
