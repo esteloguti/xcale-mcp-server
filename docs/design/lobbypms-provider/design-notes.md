@@ -47,6 +47,7 @@ Entrenubes Ecohotel y Hotel Sexto", 2026-10-15).
 | E6 | A Bearer header carrying the valid token also reaches the IP check (403, not 401): LobbyPMS authenticates a Bearer token. Q1 is answered for authentication; the switch to `bearer` waits for a 200 from an authorized IP. |
 | E7 | `x-ratelimit-limit: 60`, `x-ratelimit-remaining` on every response (per token) — the documented ~60/minute is real. |
 | E8 | The property's own help page (screenshot from the hotel, 2026-10-15): the token lives in Configuraciones › API › Token ("does not expire, can be regenerated"); IPs are added in Configuraciones › API › **Restricciones** › Agregar dirección IP; "dynamic IPs, CIDR ranges and uncontrolled public infrastructure" are not allowed, nor serverless without a fixed IP. |
+| E9 | **Two IP lists, and only one is the API's.** The hotel added 181.53.99.97 under Configuraciones › **Restricciones IP** (the menu entry beside Usuarios), bound to a user: that list restricts where that *user* may log in to the platform ("el usuario solo podrá acceder a la plataforma desde la dirección IP configurada"). The API still answered 403 `not set as a valid ip` from that IP right after. The API allowlist is the other one, Configuraciones › API › Restricciones. Onboarding instructions must name the API tab, and warn that the user list can lock the hotel's own staff out. |
 
 Consequence (D8): the IP refusal is `PROVIDER_ERROR` with the machine code `IP_NOT_AUTHORIZED`, never `PROVIDER_AUTH_EXPIRED` — re-pasting a token cannot fix it.
 
