@@ -30,6 +30,16 @@ Entrenubes Ecohotel y Hotel Sexto", 2026-10-15).
 | F11 | Payment links (`/v1/payment/link`): created in the property's own payment system, amount ≥ 6 and ≤ the outstanding balance, one OPEN link per booking, expiry ≤ 12 months (default 24 h). Returns `currency` and `url`. |
 | F12 | `POST v1/customer/{1|2}` (person / company) returns `{ status: "success" }` — no id. |
 
+## 2b. Observed (anonymous probes, 2026-10-15, from a non-authorized IP, no valid token)
+
+| # | Observation |
+|---|---|
+| E1 | `GET v1/rooms` with no token, `?api_token=<invalid>`, `Authorization: Bearer <invalid>`, and `POST v1/block` with the invalid token in the JSON body: all **`401`, `{"error":"Unauthenticated."}`**, `Content-Type: application/json`, behind Cloudflare. `GET v1/bookings/1` the same — the token is checked before the route. |
+| E2 | CORS `access-control-allow-headers` lists `Authorization` and `X-Auth-Token` — consistent with a Bearer guard (Q1), not yet proven with a valid token. |
+| E3 | No rate-limit headers on a 401. |
+
+So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PROVIDER_AUTH_EXPIRED` (reconnect) — the right answer for it. Still open (Q2): what a VALID token returns from an IP the property has not authorized.
+
 ## 3. Decisions
 
 | # | Decision | Why |
