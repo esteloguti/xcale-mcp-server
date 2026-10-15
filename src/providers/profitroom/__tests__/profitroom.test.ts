@@ -424,3 +424,47 @@ describe('static tools', () => {
     expect(urls).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// S4 — availability calendar: hotel-wide open nights, verbatim. Contract §A.5, §C.1.
+// ---------------------------------------------------------------------------
+
+describe('get_availability_calendar', () => {
+  it('returns the engine calendar for the range, with its own keys', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_get_availability_calendar',
+      { from: '2026-10-20', to: '2026-10-26' },
+      callCtx(),
+    );
+
+    expect(urls).toContain(
+      'https://booking.profitroom.com/api/hotellapausa/calendar?from=2026-10-20&to=2026-10-26',
+    );
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: {
+        from: '2026-10-20',
+        to: '2026-10-26',
+        dates: expect.arrayContaining([
+          { date: '2026-10-20', availability: true, minLOS: 1, maxLOS: null, CTD: false },
+        ]),
+      },
+    });
+  });
+
+  it.each([
+    ['a range longer than 60 days', { from: '2026-10-01', to: '2026-12-15' }],
+    ['`to` before `from`', { from: '2026-10-26', to: '2026-10-20' }],
+    ['a date that does not exist', { from: '2026-02-30', to: '2026-03-02' }],
+  ])('rejects %s without calling the engine', async (_case, args) => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_get_availability_calendar',
+      args,
+      callCtx(),
+    );
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+    expect(urls).toHaveLength(0);
+  });
+});

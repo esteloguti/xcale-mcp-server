@@ -5,7 +5,7 @@ import type { ClientResult, ProfitroomClient, SendRequest } from './client';
 import { hotelKeyFrom, type ProfitroomContext } from './context';
 import { resolveLocale, toHotel, toOffer, toRoom } from './mappers';
 import { SLUG } from './manifest';
-import { type Details, detailsSchema, offersSchema, roomsSchema } from './schemas';
+import { calendarSchema, type Details, detailsSchema, offersSchema, roomsSchema } from './schemas';
 
 const tool = toolFactory<ProfitroomContext>();
 
@@ -18,6 +18,27 @@ const locale = z
   .regex(/^[a-z]{2}$/, 'Use a two-letter language code, e.g. es')
   .optional()
   .describe("Two-letter language for names and descriptions; defaults to the hotel's language.");
+
+/**
+ * A hotel-local calendar date, `YYYY-MM-DD`. The shape check alone would let `2026-02-30` through, so
+ * the refine confirms it round-trips to a real calendar day (the same guard Erbon uses).
+ */
+const isoDate = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use an ISO calendar date (YYYY-MM-DD)')
+  .refine((s) => {
+    const d = new Date(`${s}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+  }, 'Not a real calendar date');
+
+const DAY_MS = 86_400_000;
+/** Whole days from `a` to `b` (both `YYYY-MM-DD`). */
+function daysBetween(a: string, b: string): number {
+  return (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / DAY_MS;
+}
+
+/** One calendar call covers at most this many days (contract §C.1) — bounds payload and upstream load. */
+const MAX_CALENDAR_DAYS = 60;
 
 /**
  * The Profitroom menu (contract §C.1): money-free reads over the hotel's public booking engine. The
@@ -85,6 +106,33 @@ export function buildProfitroomTools(
         );
         if (!offers.ok) return err(offers.code, offers.message);
         return ok(offers.data.map((offer) => toOffer(offer, loc, details.defaultLocale)));
+      },
+    }),
+    tool({
+      name: `mcp_${SLUG}_get_availability_calendar`,
+      description:
+        'Hotel-wide open nights at the connected Profitroom hotel between `from` and `to` (YYYY-MM-DD, ' +
+        `at most ${MAX_CALENDAR_DAYS} days). Each date carries \`availability\` (at least one room type ` +
+        'can be sold that night), `minLOS`/`maxLOS` (minimum/maximum nights for a stay starting then) ' +
+        'and `CTD` (closed to departure). Use it to suggest dates; quote a stay with check_availability.',
+      input: z
+        .object({ from: isoDate, to: isoDate })
+        .strict()
+        .refine((a) => daysBetween(a.from, a.to) >= 0, {
+          message: '`to` must not be before `from`',
+        })
+        .refine((a) => daysBetween(a.from, a.to) <= MAX_CALENDAR_DAYS, {
+          message: `The range may span at most ${MAX_CALENDAR_DAYS} days`,
+        }),
+      readOnly: true,
+      audience: 'customer',
+      handler: async (args, ctx) => {
+        const hotelKey = hotelKeyFrom(ctx.metadata.bookingEngineUrl);
+        const calendar = await client.get(ctx.request, hotelKey, 'calendar', calendarSchema, {
+          query: { from: args.from, to: args.to },
+        });
+        if (!calendar.ok) return err(calendar.code, calendar.message);
+        return ok(calendar.data);
       },
     }),
   ];
