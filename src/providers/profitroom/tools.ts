@@ -5,6 +5,7 @@ import type { ClientResult, ProfitroomClient, SendRequest } from './client';
 import { hotelKeyFrom, type ProfitroomContext } from './context';
 import { resolveLocale, toHotel, toOffer, toRoom } from './mappers';
 import { SLUG } from './manifest';
+import { runStay } from './stay';
 import { calendarSchema, type Details, detailsSchema, offersSchema, roomsSchema } from './schemas';
 
 const tool = toolFactory<ProfitroomContext>();
@@ -40,6 +41,27 @@ function daysBetween(a: string, b: string): number {
 /** One calendar call covers at most this many days (contract §C.1) — bounds payload and upstream load. */
 const MAX_CALENDAR_DAYS = 60;
 
+/** One room's party. Children by age; the hotel's own child age range is checked per call. */
+const roomParty = z
+  .object({
+    adults: z.number().int().min(1).max(10),
+    childrenAges: z.array(z.number().int().min(0).max(17)).max(6).optional(),
+  })
+  .strict();
+
+/** A stay to quote. v1 quotes exactly one room (`rooms` max 1 — raising it later is additive). */
+const stayInput = z
+  .object({
+    checkIn: isoDate,
+    checkOut: isoDate,
+    rooms: z.array(roomParty).min(1).max(1),
+    locale,
+  })
+  .strict()
+  .refine((a) => daysBetween(a.checkIn, a.checkOut) >= 1, {
+    message: '`checkOut` must be at least one night after `checkIn`',
+  });
+
 /**
  * The Profitroom menu (contract §C.1): money-free reads over the hotel's public booking engine. The
  * hotel comes from the call context (`bookingEngineUrl`), never from a tool argument. Every tool is
@@ -47,6 +69,7 @@ const MAX_CALENDAR_DAYS = 60;
  */
 export function buildProfitroomTools(
   client: ProfitroomClient,
+  now: () => number,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- erased input type (heterogeneous tool collection)
 ): ReadonlyArray<ToolDefinition<any, ProfitroomContext>> {
   return [
@@ -133,6 +156,24 @@ export function buildProfitroomTools(
         });
         if (!calendar.ok) return err(calendar.code, calendar.message);
         return ok(calendar.data);
+      },
+    }),
+    tool({
+      name: `mcp_${SLUG}_check_availability`,
+      description:
+        'What can be booked at the connected Profitroom hotel for a stay: `checkIn`/`checkOut` ' +
+        '(YYYY-MM-DD) and ONE room with `adults` and optional `childrenAges`. Each proposal names the ' +
+        'room (`room`), the rate (`offer`, whose description says what it includes) and its payment ' +
+        'and cancellation terms (`profile`), plus how many rooms are left (`roomCount`). It carries NO ' +
+        'price: the price reaches the guest only through the booking flow. `available: false` means ' +
+        'nothing can be sold for that stay and party.',
+      input: stayInput,
+      readOnly: true,
+      audience: 'customer',
+      handler: async (args, ctx) => {
+        const hotel = await loadHotel(client, ctx.request, ctx.metadata, args.locale);
+        if (!hotel.ok) return err(hotel.code, hotel.message);
+        return runStay(client, { request: ctx.request, now, ...hotel.data }, args);
       },
     }),
   ];

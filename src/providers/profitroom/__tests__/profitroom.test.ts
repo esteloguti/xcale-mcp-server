@@ -468,3 +468,186 @@ describe('get_availability_calendar', () => {
     expect(urls).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// S5 — the stay: check_availability (no money) and get_stay_prices (controlPlane). Contract §C.2–§C.4.
+// ---------------------------------------------------------------------------
+
+/** "Today" before the fixture stay (2026-10-23 → 25), so the fixtures stay valid forever. */
+const BEFORE_STAY = Date.parse('2026-10-14T15:00:00Z');
+const stay = (extra: Record<string, unknown> = {}) => ({
+  checkIn: '2026-10-23',
+  checkOut: '2026-10-25',
+  rooms: [{ adults: 2 }],
+  ...extra,
+});
+
+describe('check_availability', () => {
+  it('lists what can be booked, joined with room, rate and terms — and carries no money', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay({ locale: 'es' }),
+      callCtx(),
+    );
+
+    expect(urls).toContain(
+      'https://booking.profitroom.com/api/hotellapausa/availability?checkIn=2026-10-23&checkOut=2026-10-25&occupancy%5B0%5D%5Badults%5D=2',
+    );
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: {
+        checkIn: '2026-10-23',
+        checkOut: '2026-10-25',
+        occupancy: { adults: 2, childrenAges: [] },
+        available: true,
+        proposals: [
+          {
+            OfferID: 380900,
+            RoomID: 230226,
+            profileId: 212614,
+            roomCount: 4,
+            room: { id: 230226, name: 'Cabaña Doble con Jacuzzi' },
+            offer: { id: 380900, name: 'Tarifa Estándar' },
+            profile: { profileId: 212614, type: 'elastic', deposit: { percentage: 30 } },
+          },
+        ],
+      },
+    });
+    expect(JSON.stringify(r)).not.toMatch(/price|amount|1411000/i);
+  });
+
+  it('refreshes rooms and rates once when a proposal names an unknown room, then fails closed', async () => {
+    const roomsWithoutIt = (fixture('rooms') as { id: number }[]).filter((r) => r.id !== 230226);
+    const { urls, fetchImpl } = fakeEngine({ rooms: { body: roomsWithoutIt } });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay(),
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.PROVIDER_ERROR });
+    expect(urls.filter((u) => u.endsWith('/rooms'))).toHaveLength(2);
+  });
+
+  it('serves a room created minutes ago once the refresh finds it', async () => {
+    let roomsCalls = 0;
+    const all = fixture('rooms') as { id: number }[];
+    const { fetchImpl } = fakeEngine();
+    const engine = (async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/rooms')) {
+        roomsCalls += 1;
+        const body = roomsCalls === 1 ? all.filter((r) => r.id !== 230226) : all;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => body,
+          text: async () => '',
+        } as unknown as Response;
+      }
+      return fetchImpl(url, init);
+    }) as unknown as typeof fetch;
+
+    const r = await createProfitroomProvider({
+      fetchImpl: engine,
+      now: () => BEFORE_STAY,
+    }).callTool('mcp_profitroom_check_availability', stay(), callCtx());
+
+    expect(r).toMatchObject({ kind: 'success', data: { proposals: [{ room: { id: 230226 } }] } });
+    expect(roomsCalls).toBe(2);
+  });
+
+  it('rejects a child older than the hotel prices as a child, before asking for availability', async () => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay({ rooms: [{ adults: 2, childrenAges: [7] }] }),
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({
+      kind: 'error',
+      code: ProviderErrorCode.INVALID_INPUT,
+      message: 'children older than 2 count as adults at this hotel',
+    });
+    expect(urls.some((u) => u.includes('/availability'))).toBe(false);
+  });
+
+  it('prices a child inside the range and sends the age to the engine', async () => {
+    const { urls, fetchImpl } = fakeEngine({
+      availability: { body: fixture('availability-child') },
+    });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay({ rooms: [{ adults: 2, childrenAges: [1] }] }),
+      callCtx(),
+    );
+
+    expect(urls.some((u) => u.includes('occupancy%5B0%5D%5Bchildren%5D%5B0%5D=1'))).toBe(true);
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: { occupancy: { adults: 2, childrenAges: [1] }, available: true },
+    });
+  });
+
+  it('answers "does not fit one room" when the engine re-splits the party — never a partial quote', async () => {
+    // Observed: the engine answers a party one room cannot take with a multi-room suggestion.
+    const { fetchImpl } = fakeEngine({
+      availability: { body: fixture('availability-dropped-child') },
+    });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay({ rooms: [{ adults: 2, childrenAges: [1] }] }),
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({
+      kind: 'success',
+      data: { available: false, reason: 'party_does_not_fit_one_room', proposals: [] },
+    });
+  });
+
+  it('answers "not available" (no reason) when the engine has nothing for those dates', async () => {
+    const { fetchImpl } = fakeEngine({
+      availability: { body: [{ occupancy: { adults: 2, children: [] }, proposals: [] }] },
+    });
+    const r = await createProfitroomProvider({ fetchImpl, now: () => BEFORE_STAY }).callTool(
+      'mcp_profitroom_check_availability',
+      stay(),
+      callCtx(),
+    );
+
+    expect(r).toMatchObject({ kind: 'success', data: { available: false, proposals: [] } });
+    expect((r as { data: object }).data).not.toHaveProperty('reason');
+  });
+
+  it.each([
+    ['check-out on the check-in day', stay({ checkOut: '2026-10-23' }), BEFORE_STAY],
+    ['check-out before check-in', stay({ checkOut: '2026-10-22' }), BEFORE_STAY],
+    // 2026-10-24 03:00 UTC is still 2026-10-23 22:00 in Bogotá: a check-in on 10-23 is today, allowed;
+    // one on 10-22 is in the past for the hotel.
+    [
+      'a check-in already past at the hotel',
+      stay({ checkIn: '2026-10-22' }),
+      Date.parse('2026-10-24T03:00:00Z'),
+    ],
+  ])('rejects %s without asking for availability', async (_case, args, now) => {
+    const { urls, fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl, now: () => now }).callTool(
+      'mcp_profitroom_check_availability',
+      args,
+      callCtx(),
+    );
+    expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+    expect(urls.some((u) => u.includes('/availability'))).toBe(false);
+  });
+
+  it('accepts a check-in that is today in the hotel time zone though already tomorrow in UTC', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({
+      fetchImpl,
+      now: () => Date.parse('2026-10-24T03:00:00Z'),
+    }).callTool('mcp_profitroom_check_availability', stay(), callCtx());
+    expect(r.kind).toBe('success');
+  });
+});

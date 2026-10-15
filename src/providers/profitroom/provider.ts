@@ -16,12 +16,13 @@ export interface ProfitroomProviderDeps {
 
 /** Factory with DI. Credential-less: `auth: none`; the hotel rides the `bookingEngineUrl` context. */
 export function createProfitroomProvider(deps: ProfitroomProviderDeps = {}): IProvider {
-  const client = createProfitroomClient(deps.now ? { now: deps.now } : {});
+  const now = deps.now ?? Date.now;
+  const client = createProfitroomClient({ now });
   return createProvider({
     manifest: profitroomManifest,
     auth: profitroomAuth,
     metadataSchema: profitroomContext,
-    tools: buildProfitroomTools(client),
+    tools: buildProfitroomTools(client, now),
     ...(deps.fetchImpl ? { fetchImpl: deps.fetchImpl } : {}),
   });
 }
