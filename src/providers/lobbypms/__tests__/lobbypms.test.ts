@@ -26,7 +26,7 @@ const ROOMS = {
   meta: { total_records: 1, current_page: 1, records_per_page: 50, total_pages: 1 },
 };
 
-const AVAILABILITY_V1 = {
+const AVAILABILITY_V2 = {
   data: [
     {
       date: '2026-11-12',
@@ -35,9 +35,16 @@ const AVAILABILITY_V1 = {
           category_id: 2523,
           name: 'King',
           available_rooms: 3,
-          prices: [
-            { people: 1, value: 320 },
-            { people: 2, value: 340 },
+          plans: [
+            {
+              id: null,
+              name: 'STANDARD_RATE',
+              prices: [
+                { people: 1, value: 320 },
+                { people: 2, value: 340 },
+              ],
+            },
+            { id: 1, name: 'Full pack', prices: [{ people: 1, value: 352 }] },
           ],
           restrictions: { min_stay: 0, max_stay: 0, lead_days: 0 },
         },
@@ -170,8 +177,8 @@ describe('lobbypms provider — requests', () => {
     expect(new URL(calls[0]!.url).searchParams.get('page')).toBe('2');
   });
 
-  it('check_availability strips prices but keeps counts and restrictions', async () => {
-    const { p, calls } = provider(AVAILABILITY_V1);
+  it('check_availability strips prices but keeps counts, plans and restrictions', async () => {
+    const { p, calls } = provider(AVAILABILITY_V2);
     const result = await p.callTool(
       'mcp_lobbypms_check_availability',
       { start_date: '2026-11-12', end_date: '2026-11-14', category_id: 2523 },
@@ -187,16 +194,20 @@ describe('lobbypms provider — requests', () => {
               category_id: 2523,
               name: 'King',
               available_rooms: 3,
+              plans: [
+                { id: null, name: 'STANDARD_RATE' },
+                { id: 1, name: 'Full pack' },
+              ],
               restrictions: { min_stay: 0, max_stay: 0, lead_days: 0 },
             },
           ],
         },
       ],
-      meta: AVAILABILITY_V1.meta,
+      meta: AVAILABILITY_V2.meta,
     });
     expect(JSON.stringify(data(result))).not.toContain('price');
     const url = new URL(calls[0]!.url);
-    expect(url.pathname).toBe('/api/v1/available-rooms');
+    expect(url.pathname).toBe('/api/v2/available-rooms');
     expect(url.searchParams.get('start_date')).toBe('2026-11-12');
     expect(url.searchParams.get('end_date')).toBe('2026-11-14');
     expect(url.searchParams.get('category_id')).toBe('2523');
@@ -215,7 +226,7 @@ describe('lobbypms provider — requests', () => {
   });
 
   it('rejects a stay whose end is not after its start, and a date that does not exist', async () => {
-    const { p, calls } = provider(AVAILABILITY_V1);
+    const { p, calls } = provider(AVAILABILITY_V2);
     const same = await p.callTool(
       'mcp_lobbypms_check_availability',
       { start_date: '2026-11-12', end_date: '2026-11-12' },

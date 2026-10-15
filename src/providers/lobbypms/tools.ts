@@ -40,22 +40,24 @@ function stayWindow<T extends z.ZodRawShape>(shape: T) {
     });
 }
 
-/** One availability row as `GET v1/available-rooms` returns it. */
+/** One availability row as `GET v2/available-rooms` returns it. */
 interface AvailabilityDay {
   readonly date?: unknown;
   readonly categories?: ReadonlyArray<{
     readonly category_id?: unknown;
     readonly name?: unknown;
     readonly available_rooms?: unknown;
+    readonly plans?: ReadonlyArray<{ readonly id?: unknown; readonly name?: unknown }>;
     readonly restrictions?: unknown;
   }>;
 }
 
 /**
  * The money-free projection of the availability read: each day keeps its categories' id, name,
- * count and restrictions, and loses `prices`/`plans`. A documented projection of fields, never a
- * rename — the agent can see what is free without ever seeing a raw price it might narrate as a
- * quote (the backend composes quotes from `get_availability_rates`).
+ * count, restrictions and the rate plans on sale (`id`, `name`), and loses every `prices` array. A
+ * documented projection of fields, never a rename — the agent can see what is free and which plans it
+ * can offer without ever seeing a raw price it might narrate as a quote (the backend composes quotes
+ * from `get_availability_rates`).
  */
 export function withoutPrices(data: unknown): unknown {
   const body = data as { data?: ReadonlyArray<AvailabilityDay>; meta?: unknown } | null;
@@ -68,6 +70,9 @@ export function withoutPrices(data: unknown): unknown {
         category_id: c.category_id,
         name: c.name,
         available_rooms: c.available_rooms,
+        ...(Array.isArray(c.plans)
+          ? { plans: c.plans.map((plan) => ({ id: plan.id, name: plan.name })) }
+          : {}),
         restrictions: c.restrictions,
       })),
     })),
@@ -111,12 +116,14 @@ export function buildLobbypmsTools(
         'Check which room types are free at the connected LobbyPMS property, night by night, for a ' +
         'stay window (`start_date`, `end_date`, YYYY-MM-DD; optional `category_id`). Returns ' +
         '`data[]` — one entry per date with `categories[]`: `{ category_id, name, available_rooms, ' +
-        'restrictions: { min_stay, max_stay, lead_days } }`. Does NOT return prices: quote through ' +
-        'the booking flow. Paginated (`meta`, `page`, `paginate` up to 50).',
+        'plans: [{ id, name }], restrictions: { min_stay, max_stay, lead_days } }`. `plans` are the ' +
+        'rate plans on sale that night; the standard rate is `{ id: null, name: "STANDARD_RATE" }`. ' +
+        'Does NOT return prices: quote through the booking flow. Paginated (`meta`, `page`, ' +
+        '`paginate` up to 50).',
       input: stayWindow({ category_id: id.optional(), page, paginate }),
       handler: async (args, ctx) => {
         const outcome = unwrapLobby(
-          await client.get('v1/available-rooms', ctx.request, args),
+          await client.get('v2/available-rooms', ctx.request, args),
           'check availability',
         );
         return outcome.ok ? { ...outcome, data: withoutPrices(outcome.data) } : outcome;
