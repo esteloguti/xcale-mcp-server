@@ -9,6 +9,8 @@ import type { RequestResult } from '../../../core/http';
 import { SecretString } from '../../../core/secret-string';
 import type { ProviderCallContext } from '../../../core/types';
 import { createProfitroomClient } from '../client';
+import { PROVIDERS } from '../../index';
+import { runProviderConformance } from '../../../core/testing/provider-conformance';
 import { createProfitroomProvider } from '../provider';
 
 import { hotelKeyFrom, profitroomContext } from '../context';
@@ -724,5 +726,36 @@ describe('get_stay_prices (backend-only money guard)', () => {
       callCtx(),
     );
     expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.PROVIDER_ERROR });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S6 — integration: registered, conformant, credential-less in the catalog.
+// ---------------------------------------------------------------------------
+
+describe('profitroom provider integration', () => {
+  it('passes provider conformance', async () => {
+    await runProviderConformance(createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl }));
+  });
+
+  it('is registered, credential-less, and publishes five money-free menu tools', () => {
+    const provider = PROVIDERS.find((p) => p.manifest.slug === 'profitroom');
+    expect(provider?.auth).toEqual({ type: 'none' });
+    expect(provider?.contextSchema).toMatchObject({
+      properties: { bookingEngineUrl: { type: 'string' } },
+      required: ['bookingEngineUrl'],
+    });
+    expect(
+      provider
+        ?.listTools()
+        .map((t) => t.name)
+        .sort(),
+    ).toEqual([
+      'mcp_profitroom_check_availability',
+      'mcp_profitroom_get_availability_calendar',
+      'mcp_profitroom_get_hotel',
+      'mcp_profitroom_list_rates',
+      'mcp_profitroom_list_room_types',
+    ]);
   });
 });
