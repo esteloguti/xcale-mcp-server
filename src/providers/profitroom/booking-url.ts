@@ -9,19 +9,21 @@ export interface BookingLinkArgs {
   readonly childrenAges: readonly number[];
   readonly currency: string;
   readonly RoomID: number;
-  readonly OfferID: number;
   readonly details: Details;
 }
 
 /**
- * The booking-engine page with the stay already filled in (contract §A.8, Observed in the browser):
- * the guest lands on the quoted search and pays there. Built from a fixed origin — never from the
- * connection's URL.
+ * The booking-engine page for the quoted room with the stay already filled in (contract §A.8, Observed
+ * in the browser 2026-10-14): `/pricelist/rooms/{RoomID}` opens that room with its rates expanded and
+ * its "book now" button, for the dates and party in the query. The guest pays there. Built from a fixed
+ * origin — never from the connection's URL.
+ *
+ * Observed dead ends, so nobody re-adds them: `room-id`/`offer-id` query params are accepted but
+ * pre-select nothing, and there is no way to pre-select a rate — the room page lists them all.
  *
  * Children depend on the hotel's picker: the classic one (`enabledNewChildrenOccupancyPicker: false`,
  * La Pausa) takes `r1_child{minAge}-{maxAge}={count}` per child age band (verified: "2 adultos • 1
  * niño"); the new one takes `r1_children_age={a},{b}` (Inferred from the engine bundle).
- * `room-id`/`offer-id` are accepted by the engine; whether they pre-select is unverified.
  */
 export function buildBookingUrl(a: BookingLinkArgs): string {
   const params: [string, string][] = [
@@ -30,11 +32,9 @@ export function buildBookingUrl(a: BookingLinkArgs): string {
     ['r1_adults', String(a.adults)],
     ...childrenParams(a.details, a.childrenAges),
     ['currency', a.currency],
-    ['room-id', String(a.RoomID)],
-    ['offer-id', String(a.OfferID)],
   ];
   const qs = new URLSearchParams(params).toString();
-  return `https://booking.profitroom.com/${a.locale}/${encodeURIComponent(a.hotelKey)}/pricelist/rooms/?${qs}`;
+  return `https://booking.profitroom.com/${a.locale}/${encodeURIComponent(a.hotelKey)}/pricelist/rooms/${a.RoomID}?${qs}`;
 }
 
 function childrenParams(details: Details, ages: readonly number[]): [string, string][] {

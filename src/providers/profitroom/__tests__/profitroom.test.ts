@@ -110,15 +110,17 @@ function fakeRequest(...replies: Reply[]) {
 const okReply = (data: unknown): RequestResult => ({ ok: true, status: 200, data });
 
 describe('profitroom client', () => {
-  it('builds every request from the fixed API base, with the engine header and the locale', async () => {
-    const { calls, request } = fakeRequest(okReply(fixture('rooms')));
+  it('builds every request from the fixed API base, with the engine header and the query', async () => {
+    const { calls, request } = fakeRequest(okReply(fixture('offers')));
     const client = createProfitroomClient();
 
-    const r = await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
+    const r = await client.get(request, 'hotellapausa', 'offers', offersSchema, {
+      query: { status: '1' },
+    });
 
     expect(r.ok).toBe(true);
     expect(calls[0]?.method).toBe('GET');
-    expect(calls[0]?.url).toBe('https://booking.profitroom.com/api/hotellapausa/rooms?lang=es');
+    expect(calls[0]?.url).toBe('https://booking.profitroom.com/api/hotellapausa/offers?status=1');
     expect(calls[0]?.headers).toEqual({ 'x-requested-with': 'XMLHttpRequest' });
   });
 
@@ -211,28 +213,25 @@ describe('profitroom client', () => {
       const { calls, request } = fakeRequest(okReply(fixture('rooms')));
       const client = createProfitroomClient({ now: c.now });
 
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
+      await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
       c.advance(14 * MIN);
-      const again = await client.get(request, 'hotellapausa', 'rooms', roomsSchema, {
-        locale: 'es',
-      });
+      const again = await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
 
       expect(again.ok).toBe(true);
       expect(calls).toHaveLength(1);
     });
 
-    it('asks Profitroom again after 15 minutes, for another locale, or for another hotel', async () => {
+    it('asks Profitroom again after 15 minutes or for another hotel', async () => {
       const c = clock();
       const { calls, request } = fakeRequest(okReply(fixture('rooms')));
       const client = createProfitroomClient({ now: c.now });
 
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'en' });
-      await client.get(request, 'otherhotel', 'rooms', roomsSchema, { locale: 'es' });
+      await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
+      await client.get(request, 'otherhotel', 'rooms', roomsSchema);
       c.advance(15 * MIN);
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
+      await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
 
-      expect(calls).toHaveLength(4);
+      expect(calls).toHaveLength(3);
     });
 
     it('never caches availability or the calendar — prices and nights are always live', async () => {
@@ -265,9 +264,9 @@ describe('profitroom client', () => {
       const { calls, request } = fakeRequest(okReply(fixture('rooms')));
       const client = createProfitroomClient();
 
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
+      await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
       client.invalidate('hotellapausa');
-      await client.get(request, 'hotellapausa', 'rooms', roomsSchema, { locale: 'es' });
+      await client.get(request, 'hotellapausa', 'rooms', roomsSchema);
 
       expect(calls).toHaveLength(2);
     });
@@ -685,7 +684,7 @@ describe('get_stay_prices (backend-only money guard)', () => {
             originalPrice: { amount: 1510000, currency: 'COP' },
             discounts: [{ amount: -99000, availableTo: '2026-10-30T00:00:00-05:00' }],
             bookingUrl:
-              'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&currency=COP&room-id=230226&offer-id=380900',
+              'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/230226?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&currency=COP',
           },
         ],
       },
@@ -703,7 +702,7 @@ describe('get_stay_prices (backend-only money guard)', () => {
     const url = (r as { data: { proposals: { bookingUrl: string }[] } }).data.proposals[0]
       ?.bookingUrl;
     expect(url).toBe(
-      'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&r1_child0-2=1&currency=COP&room-id=230226&offer-id=380900',
+      'https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/230226?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&r1_child0-2=1&currency=COP',
     );
   });
 

@@ -17,7 +17,6 @@ export type ClientResult<T> =
   | { readonly ok: false; readonly code: ProviderErrorCode; readonly message: string };
 
 export interface GetOptions {
-  readonly locale?: string;
   readonly query?: Readonly<Record<string, string>>;
 }
 
@@ -43,7 +42,8 @@ export interface ProfitroomClientOptions {
 
 /**
  * Static resources change rarely and `rooms` alone is ~45 KB / 1.4 s (contract §A.1): cached in memory,
- * per hotel and locale, for 15 minutes. `calendar` and `availability` are NEVER cached — a price or an
+ * per hotel (and query), for 15 minutes. Responses carry every translation, so the locale is chosen in
+ * the provider, not asked of the engine. `calendar` and `availability` are NEVER cached — a price or an
  * open night must always be live. Only parsed successes are cached; a failure is retried next call.
  * Per process and public data only, so it holds no credential (Credential-in-Transit-Only untouched).
  */
@@ -62,7 +62,8 @@ export function createProfitroomClient(options: ProfitroomClientOptions = {}): P
     },
 
     async get(request, hotelKey, resource, schema, opts = {}) {
-      const cacheKey = CACHED.has(resource) ? `${hotelKey}|${resource}|${opts.locale ?? ''}` : null;
+      const url = buildUrl(hotelKey, resource, opts);
+      const cacheKey = CACHED.has(resource) ? `${hotelKey}|${url}` : null;
       const hit = cacheKey === null ? undefined : cache.get(cacheKey);
       if (hit !== undefined && now() - hit.at < CACHE_TTL_MS) {
         return { ok: true, data: hit.data };
@@ -70,7 +71,7 @@ export function createProfitroomClient(options: ProfitroomClientOptions = {}): P
 
       const res = await request({
         method: 'GET',
-        url: buildUrl(hotelKey, resource, opts),
+        url,
         headers: { 'x-requested-with': 'XMLHttpRequest' },
       });
       if (!res.ok) return remapFailure(resource, res);
@@ -94,7 +95,6 @@ export function createProfitroomClient(options: ProfitroomClientOptions = {}): P
 
 function buildUrl(hotelKey: string, resource: Resource, opts: GetOptions): string {
   const params = new URLSearchParams(opts.query);
-  if (opts.locale !== undefined) params.set('lang', opts.locale);
   const qs = params.toString();
   return `${API_BASE}${encodeURIComponent(hotelKey)}/${resource}${qs ? `?${qs}` : ''}`;
 }

@@ -132,7 +132,6 @@ export async function runStay(
         childrenAges,
         currency,
         RoomID: p.RoomID,
-        OfferID: p.OfferID,
         details: scope.details,
       }),
     }));
