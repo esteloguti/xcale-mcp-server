@@ -37,6 +37,7 @@ Entrenubes Ecohotel y Hotel Sexto", 2026-10-15).
 | E1 | `GET v1/rooms` with no token, `?api_token=<invalid>`, `Authorization: Bearer <invalid>`, and `POST v1/block` with the invalid token in the JSON body: all **`401`, `{"error":"Unauthenticated."}`**, `Content-Type: application/json`, behind Cloudflare. `GET v1/bookings/1` the same — the token is checked before the route. |
 | E2 | CORS `access-control-allow-headers` lists `Authorization` and `X-Auth-Token` — consistent with a Bearer guard (Q1), not yet proven with a valid token. |
 | E3 | No rate-limit headers on a 401. |
+| E4 | The provider itself, run live through `scripts/lobbypms-live-probe.ts` with a fake token: all seven reads reach LobbyPMS (130–690 ms) and come back `PROVIDER_AUTH_EXPIRED` with `LobbyPMS <verb> failed (HTTP 401)`; the token appears in no output and no saved file. |
 
 So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PROVIDER_AUTH_EXPIRED` (reconnect) — the right answer for it. Still open (Q2): what a VALID token returns from an IP the property has not authorized.
 
@@ -53,6 +54,11 @@ So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PRO
 | D7 | Dedicated egress IPs on the App Platform app (`.do/app.yaml` › `egress: DEDICATED_IP`). | F3. Two static IPs that survive redeploys (US$25/month). Every call of this server leaves from them, so each property authorizes the same two IPs once. **A spec applied without the block releases them for good.** |
 
 ## 4. Open questions — closed by the first read-only session
+
+**How:** with a property's token and this machine's IP authorized in the property,
+`LOBBYPMS_API_TOKEN=… npx tsx scripts/lobbypms-live-probe.ts --property <id>` — read-only, through the
+provider's own code, responses saved for review. Run it once more from an IP the property has NOT
+authorized to close Q2.
 
 Probes that touch no guest data and create nothing: `list_room_types`, `check_availability` and
 `get_availability_rates` on a future window, `get_booking` with an id that cannot exist, `list_channels`,
