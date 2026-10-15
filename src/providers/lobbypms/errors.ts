@@ -14,8 +14,16 @@ import { err, ok, type ToolOutcome } from '../../core/tool';
  * on, it is a refusal a reconnect cannot fix — mapped to `PROVIDER_AUTH_EXPIRED` it would flip a
  * working connection to "reconnect required" for every tenant who asked to cancel a front-desk
  * booking. So a body naming a code in `BUSINESS_CODES` is `PROVIDER_ERROR` (or `INVALID_INPUT` for
- * `INPUT_PARAMETERS`), never the status's default. A 401/403 WITHOUT such a code keeps the core's
- * `PROVIDER_AUTH_EXPIRED` — the token or the IP authorization is what failed, and the owner must act.
+ * `INPUT_PARAMETERS`), never the status's default.
+ *
+ * **An unauthorized caller IP is not "reconnect" either** (Observed 2026-10-15, a valid token from an
+ * IP the property had not added): `403` with the body `["the <ip> trying to access the API is not set
+ * as a valid ip"]` — a bare JSON array, no `error_code`. Re-pasting the token cannot fix it; the
+ * property has to authorize the IP. So it is `PROVIDER_ERROR` with the synthesized machine code
+ * `IP_NOT_AUTHORIZED` in the message, which a consumer can tell apart from a business "no".
+ *
+ * A 401 keeps the core's `PROVIDER_AUTH_EXPIRED`: Observed, a bad or missing token is
+ * `401 {"error":"Unauthenticated."}` on every route, and a new token is the fix.
  *
  * The machine code (and only the machine code) is put in the message, so the consumer can tell
  * `RECORD_NOT_FOUND` from `BOOKING_CHECK_IN_COMPLETE`. The provider's free text is not: it is
@@ -45,7 +53,16 @@ export function lobbyErrorCode(body: string): string | undefined {
   }
 }
 
+/** The code this server gives LobbyPMS's refusal of an unauthorized caller IP (Observed, 403). */
+export const IP_NOT_AUTHORIZED = 'IP_NOT_AUTHORIZED';
+
+/** Is this error body LobbyPMS saying the caller's IP is not authorized? Matched on its own words. */
+export function isIpRefusal(body: string): boolean {
+  return /not set as a valid ip/i.test(body);
+}
+
 function classify(res: Extract<RequestResult, { ok: false }>, code: string | undefined) {
+  if (code === IP_NOT_AUTHORIZED) return ProviderErrorCode.PROVIDER_ERROR;
   if (code === 'INPUT_PARAMETERS') return ProviderErrorCode.INVALID_INPUT;
   if (code !== undefined && BUSINESS_CODES.has(code)) return ProviderErrorCode.PROVIDER_ERROR;
   return res.errorCode;
@@ -57,7 +74,7 @@ function classify(res: Extract<RequestResult, { ok: false }>, code: string | und
  */
 export function unwrapLobby(res: RequestResult, operation: string): ToolOutcome {
   if (!res.ok) {
-    const code = lobbyErrorCode(res.body);
+    const code = isIpRefusal(res.body) ? IP_NOT_AUTHORIZED : lobbyErrorCode(res.body);
     return err(
       classify(res, code),
       `LobbyPMS ${operation} failed (HTTP ${res.status}${code ? `, ${code}` : ''})`,

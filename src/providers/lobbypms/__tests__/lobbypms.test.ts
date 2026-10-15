@@ -367,6 +367,24 @@ describe('lobbypms provider — requests', () => {
 });
 
 describe('lobbypms provider — errors', () => {
+  it('an unauthorized caller IP is IP_NOT_AUTHORIZED, never "reconnect" (Observed 2026-10-15)', async () => {
+    // The observed body, IP anonymized (TEST-NET-3).
+    const { p } = provider(
+      ['the 203.0.113.7 trying to access the API is not set as a valid ip'],
+      403,
+    );
+    const f = failure(await p.callTool('mcp_lobbypms_list_room_types', {}, CTX));
+    expect(f.code).toBe(ProviderErrorCode.PROVIDER_ERROR);
+    expect(f.message).toBe('LobbyPMS list room types failed (HTTP 403, IP_NOT_AUTHORIZED)');
+    expect(f.message).not.toContain('203.0.113.7');
+  });
+
+  it('a bad token is a 401 Unauthenticated and stays AUTH_EXPIRED (Observed 2026-10-15)', async () => {
+    const { p } = provider({ error: 'Unauthenticated.' }, 401);
+    const f = failure(await p.callTool('mcp_lobbypms_list_room_types', {}, CTX));
+    expect(f.code).toBe(ProviderErrorCode.AUTH_EXPIRED);
+  });
+
   it('401 without a business code is AUTH_EXPIRED (token or IP authorization)', async () => {
     const { p } = provider({ message: 'Unauthenticated.' }, 401);
     const result = await p.callTool('mcp_lobbypms_list_room_types', {}, CTX);

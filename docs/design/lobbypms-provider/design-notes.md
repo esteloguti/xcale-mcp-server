@@ -39,6 +39,17 @@ Entrenubes Ecohotel y Hotel Sexto", 2026-10-15).
 | E3 | No rate-limit headers on a 401. |
 | E4 | The provider itself, run live through `scripts/lobbypms-live-probe.ts` with a fake token: all seven reads reach LobbyPMS (130–690 ms) and come back `PROVIDER_AUTH_EXPIRED` with `LobbyPMS <verb> failed (HTTP 401)`; the token appears in no output and no saved file. |
 
+**With a real property token (2026-10-15, from an IP the property had NOT authorized):**
+
+| # | Observation |
+|---|---|
+| E5 | Every read — query `api_token` and `Authorization: Bearer` alike — is **`403`, body `["the <ip> trying to access the API is not set as a valid ip"]`**: a bare JSON array of one string, no `error_code`. A bad token is 401, a good token from the wrong IP is 403: the token is checked first. **Q2 closed.** |
+| E6 | A Bearer header carrying the valid token also reaches the IP check (403, not 401): LobbyPMS authenticates a Bearer token. Q1 is answered for authentication; the switch to `bearer` waits for a 200 from an authorized IP. |
+| E7 | `x-ratelimit-limit: 60`, `x-ratelimit-remaining` on every response (per token) — the documented ~60/minute is real. |
+| E8 | The property's own help page (screenshot from the hotel, 2026-10-15): the token lives in Configuraciones › API › Token ("does not expire, can be regenerated"); IPs are added in Configuraciones › API › **Restricciones** › Agregar dirección IP; "dynamic IPs, CIDR ranges and uncontrolled public infrastructure" are not allowed, nor serverless without a fixed IP. |
+
+Consequence (D8): the IP refusal is `PROVIDER_ERROR` with the machine code `IP_NOT_AUTHORIZED`, never `PROVIDER_AUTH_EXPIRED` — re-pasting a token cannot fix it.
+
 So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PROVIDER_AUTH_EXPIRED` (reconnect) — the right answer for it. Still open (Q2): what a VALID token returns from an IP the property has not authorized.
 
 ## 3. Decisions
@@ -51,6 +62,7 @@ So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PRO
 | D4 | Agent menu = `list_room_types` + `check_availability` (prices **stripped**, a documented projection). Everything else `controlPlane`. | The money guard: prices, guest data and writes are composed and gated by the consumer. |
 | D5 | One narrow error override: a body naming a documented business code (F9, `INPUT_PARAMETERS`) is never `PROVIDER_AUTH_EXPIRED`; its machine code goes in the message. A 401/403 without one keeps the core map. | `UNAUTHORIZED_BOOKING` on a 401 would flip a working connection to "reconnect". Free text is never forwarded. |
 | D6 | No tool for rooms/status, occupancy, daily-occupancy, products, add-product-service. | Curated: no consumer flow needs them yet. |
+| D8 | A `403` whose body says the caller IP "is not set as a valid ip" is `PROVIDER_ERROR` + `IP_NOT_AUTHORIZED`. | Observed E5: a reconnect cannot fix it; the property must authorize the IP. |
 | D7 | Dedicated egress IPs on the App Platform app (`.do/app.yaml` › `egress: DEDICATED_IP`). | F3. Two static IPs that survive redeploys (US$25/month). Every call of this server leaves from them, so each property authorizes the same two IPs once. **A spec applied without the block releases them for good.** |
 
 ## 4. Open questions — closed by the first read-only session
