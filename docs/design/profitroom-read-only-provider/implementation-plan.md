@@ -225,3 +225,12 @@ Consumer: xcale-backend #1624 (the agent sends the cabins' photos on WhatsApp wi
 | R2 the featured path is checked too | test red: only a gallery URL was fetched                                                                                                                                         | `checkPhoto` fetches one featured (`images/rooms/`) and one gallery (`images/gallery/`) photo; either missing or not an image → drift. The earlier GIF test now breaks only the gallery path (its intent), since the featured one is fetched first |
 
 - [x] `npm test` 43 files, 626 green; typecheck and format clean; live probe: all six checks `ok` ("featured and gallery photos are images")
+
+**PR #146 review minors (2026-10-15):**
+
+| Cycle                                             | Red                                                               | Green                                                                                                                                     |
+| :------------------------------------------------ | :---------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------- |
+| T1 a hung photo host does not stall the job       | test red: the probe waited forever on a photo that never answered | `fetchPhoto` aborts after `photoTimeoutMs` (default 10 s) → `unreachable`, never drift; it cancels the body (only status and type matter) |
+| T2 file names are lowercase, as the contract says | test red: `FEATURED.JPG` was accepted (the regex had `/i`)        | `PHOTO_FILE` without `/i`                                                                                                                 |
+
+- [x] `npm test` 43 files, 628 green; typecheck and format clean; live probe ok

@@ -409,6 +409,23 @@ describe('static tools', () => {
     expect(listed[2]?.photos.some((p) => p.url.includes('secret'))).toBe(false);
   });
 
+  // Review of #146: the file-name rule is lowercase, as the contract states.
+  it('list_room_types drops a photo whose file name is not lowercase', async () => {
+    const rooms = structuredClone(fixture('rooms')) as Record<string, unknown>[];
+    (rooms[0]!.gallery as { featured: { fileName: string } }).featured.fileName = 'FEATURED.JPG';
+    const { fetchImpl } = fakeEngine({ rooms: { body: rooms } });
+
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_room_types',
+      { locale: 'es' },
+      callCtx(),
+    );
+
+    const photos = (r as { data: { photos: { url: string }[] }[] }).data[0]?.photos ?? [];
+    expect(photos.some((p) => p.url.includes('FEATURED'))).toBe(false);
+    expect(photos[0]?.url).toContain('/images/gallery/');
+  });
+
   it('list_rates keeps profiles verbatim and falls back to the hotel language when a rate lacks one', async () => {
     const { fetchImpl } = fakeEngine();
     const r = await createProfitroomProvider({ fetchImpl }).callTool(

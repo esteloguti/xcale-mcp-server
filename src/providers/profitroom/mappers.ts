@@ -81,7 +81,7 @@ export function toHotel(details: Details, locale: string, hotelKey: string) {
  */
 const PHOTO_HOST = 'https://r.profitroom.pl';
 const PHOTO_SIZE = '1134x0';
-const PHOTO_FILE = /^[a-z0-9-]+\.(jpe?g|png|webp)$/i;
+const PHOTO_FILE = /^[a-z0-9-]+\.(jpe?g|png|webp)$/;
 
 export function photosOf(room: Rooms[number], hotelKey: string): { url: string }[] {
   const g = room.gallery;

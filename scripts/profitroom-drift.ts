@@ -47,6 +47,8 @@ export interface DriftProbeOptions {
   readonly fetchImpl?: typeof fetch;
   /** Today, `YYYY-MM-DD` (UTC). The probe looks 30 days ahead so the dates are always bookable. */
   readonly today?: string;
+  /** How long one photo may take before the host counts as unreachable (default 10 s). */
+  readonly photoTimeoutMs?: number;
 }
 
 export async function runDriftProbe(opts: DriftProbeOptions = {}): Promise<DriftReport> {
@@ -73,7 +75,7 @@ export async function runDriftProbe(opts: DriftProbeOptions = {}): Promise<Drift
     checks.push(result);
     if (resource === 'rooms' && result.ok) rooms = data;
   }
-  checks.push(await checkPhoto(fetchImpl, rooms));
+  checks.push(await checkPhoto(fetchImpl, rooms, opts.photoTimeoutMs ?? 10_000));
   return {
     ok: checks.every((c) => c.ok),
     drifted: checks.some((c) => c.failure === 'drift'),
@@ -127,9 +129,14 @@ async function check(
  * #145: the photos the provider derives must still be real images — one on each path it uses, the
  * featured photo (`images/rooms/`) and a gallery photo (`images/gallery/`). A 404 or a non-image (the
  * engine answers a 1x1 GIF on a wrong path) means Profitroom moved its photos: drift. A 5xx or no
- * answer is an outage. Rooms that parse with no photo on a path are drift too (see below).
+ * answer (or none within the timeout) is an outage. Rooms that parse with no photo on a path are
+ * drift too.
  */
-async function checkPhoto(fetchImpl: typeof fetch, rooms: unknown): Promise<DriftCheck> {
+async function checkPhoto(
+  fetchImpl: typeof fetch,
+  rooms: unknown,
+  timeoutMs: number,
+): Promise<DriftCheck> {
   const resource = 'photo';
   // The rooms check already reported a rooms failure; there is nothing to derive photos from.
   if (!Array.isArray(rooms))
@@ -149,7 +156,7 @@ async function checkPhoto(fetchImpl: typeof fetch, rooms: unknown): Promise<Drif
         detail: `rooms parsed but no photo on ${path}`,
       };
     }
-    const failed = await fetchPhoto(fetchImpl, url);
+    const failed = await fetchPhoto(fetchImpl, url, timeoutMs);
     if (failed) return { resource, ...failed };
   }
   return { resource, ok: true, detail: 'featured and gallery photos are images' };
@@ -158,9 +165,12 @@ async function checkPhoto(fetchImpl: typeof fetch, rooms: unknown): Promise<Drif
 async function fetchPhoto(
   fetchImpl: typeof fetch,
   url: string,
+  timeoutMs: number,
 ): Promise<Omit<DriftCheck, 'resource'> | null> {
   try {
-    const res = await fetchImpl(url);
+    // A hung photo host must not stall the daily job: it counts as unreachable, never as drift.
+    const res = await fetchImpl(url, { signal: AbortSignal.timeout(timeoutMs) });
+    await res.body?.cancel(); // only the status and type matter; do not download the image
     const type = res.headers.get('content-type') ?? '';
     if (res.status >= 500) {
       return { ok: false, failure: 'unreachable', detail: `HTTP ${res.status} at ${url}` };

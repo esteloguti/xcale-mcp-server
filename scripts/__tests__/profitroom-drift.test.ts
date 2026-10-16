@@ -163,4 +163,23 @@ describe('profitroom drift probe', () => {
       failure: 'drift',
     });
   });
+
+  // Review of #146: a photo host that never answers must not stall the daily job.
+  it('gives up on a photo host that hangs and calls it unreachable, not drift', async () => {
+    const { fetchImpl: engineFetch } = engine();
+    const fetchImpl = (async (url: string, init?: RequestInit) => {
+      if (new URL(url).hostname !== 'r.profitroom.pl') return engineFetch(url);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+      });
+    }) as unknown as typeof fetch;
+
+    const report = await runDriftProbe({ fetchImpl, today: '2026-10-14', photoTimeoutMs: 20 });
+
+    expect(report.drifted).toBe(false);
+    expect(report.checks.find((c) => c.resource === 'photo')).toMatchObject({
+      ok: false,
+      failure: 'unreachable',
+    });
+  });
 });
