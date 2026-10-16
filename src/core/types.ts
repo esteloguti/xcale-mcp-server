@@ -30,6 +30,14 @@ export type ToolIdentityPolicy =
   | {
       readonly mode: 'subject-bound';
       readonly identityFields: readonly string[];
+      /**
+       * Optional. Names an input field carrying a RECORD id (an appointment's `idCita`) the caller may
+       * OWN — a record created through the caller's own channel. A consumer that tracks which records a
+       * subject created may authorize the call by that ownership even when the identity fields do not
+       * match, so a patient can cancel the appointment they booked without being pre-verified. Platform
+       * capability of the identity contract, not provider-specific (like `identityFields` itself).
+       */
+      readonly recordOwnershipField?: string;
     }
   /** Takes no person identifier and returns other people's records anyway. */
   | { readonly mode: 'subject-scoped' }

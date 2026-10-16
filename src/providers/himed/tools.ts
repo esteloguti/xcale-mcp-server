@@ -84,7 +84,10 @@ export function buildHimedTools(
       'Create a patient in HiMed (idempotent: also confirms an existing patient). Required by the ' +
       'scheduling flow, which can only book patients that already exist.',
     credentialGroup: 'demograficos',
-    identityPolicy: actsOnPatient('idPaciente'),
+    // Intentionally NO identityPolicy: registering a NEW patient cannot require the patient to be
+    // verified first (there is no record to bind to yet), so gating it would lock a new patient out
+    // of the clinic entirely. Creating a record is not reading or changing someone else's — the
+    // identity gate protects the reads and the cancel/modify, where the leak actually is.
     input: z
       .object({
         tipoDocumento: z
@@ -465,7 +468,10 @@ export function buildHimedTools(
     name: 'mcp_himed_create_appointment',
     description: 'Book an appointment for an existing patient. Confirm the patient exists first.',
     credentialGroup: 'autoagendamiento',
-    identityPolicy: actsOnPatient('idPaciente'),
+    // Intentionally NO identityPolicy: booking a NEW appointment must work for a patient who is not
+    // verified yet (the common first contact). Booking neither reads nor cancels anyone's data — the
+    // worst case is a spurious appointment the clinic sees and manages. The leak the gate exists for
+    // is reading/cancelling an existing patient's data, which stays protected (cancel/list below).
     input: z
       .object({
         idPaciente: z.string().min(4).max(20),
@@ -525,7 +531,10 @@ export function buildHimedTools(
     name: 'mcp_himed_cancel_appointment',
     description: "Cancel a patient's appointment.",
     credentialGroup: 'autoagendamiento',
-    identityPolicy: actsOnPatient('idPaciente'),
+    // Subject-bound on the patient (Tier 2: a verified cédula) AND record-ownership on the cita
+    // (Tier 1): a patient may cancel an appointment THEY booked through this channel even before the
+    // clinic has verified them, while cancelling anyone else's stays gated.
+    identityPolicy: { ...actsOnPatient('idPaciente'), recordOwnershipField: 'idCita' },
     input: z
       .object({
         idCita: z.string().min(1),

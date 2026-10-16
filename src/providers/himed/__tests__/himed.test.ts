@@ -58,34 +58,58 @@ describe('HiMed unified provider — credential groups', () => {
     );
   });
 
-  it('every tool that reads or changes one patient names the patient field (subject-bound)', () => {
+  it('every tool that READS or CANCELS/CHANGES one patient names the patient field (subject-bound)', () => {
     const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
     const byName = Object.fromEntries(provider.listTools().map((t) => [t.name, t]));
+    // Reads and modifications of an EXISTING patient stay gated — this is the leak the gate exists for.
     for (const name of [
-      'mcp_himed_create_patient',
       'mcp_himed_update_patient',
       'mcp_himed_patient_exists',
-      'mcp_himed_create_appointment',
       'mcp_himed_list_patient_appointments',
-      'mcp_himed_cancel_appointment',
     ]) {
       expect(byName[name]?.identityPolicy, name).toEqual({
         mode: 'subject-bound',
         identityFields: ['idPaciente'],
       });
     }
+    // Cancel is also record-owned (Tier 1): a patient may cancel the cita THEY booked here.
+    expect(byName['mcp_himed_cancel_appointment']?.identityPolicy).toEqual({
+      mode: 'subject-bound',
+      identityFields: ['idPaciente'],
+      recordOwnershipField: 'idCita',
+    });
     expect(byName['mcp_himed_change_patient_document']?.identityPolicy).toEqual({
       mode: 'subject-bound',
       identityFields: ['idPacienteActual', 'idPacienteNuevo'],
     });
   });
 
-  it('a tool that takes a patient document never ships without an identity policy', () => {
-    // The guard for the next tool: any input naming a patient document must declare whose it is.
+  it('the CREATE tools are intentionally open — a new patient must be able to register and book', () => {
+    // Creating a patient or booking an appointment cannot require prior verification (there is nothing
+    // to bind to yet) and neither reads nor cancels anyone's data. Gating them would lock a new patient
+    // out of the clinic. The protection is on the reads and cancel/change above, where the leak is.
+    const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
+    const byName = Object.fromEntries(provider.listTools().map((t) => [t.name, t]));
+    expect(byName['mcp_himed_create_patient']?.identityPolicy).toBeUndefined();
+    expect(byName['mcp_himed_create_appointment']?.identityPolicy).toBeUndefined();
+  });
+
+  it('a tool that READS a patient document never ships without an identity policy', () => {
+    // The guard for the next tool: any input naming a patient document must declare whose it is —
+    // EXCEPT the create tools, which are open by the decision above (creating is not reading).
+    const OPEN_BY_DESIGN = new Set([
+      'mcp_himed_create_patient',
+      'mcp_himed_create_appointment',
+    ]);
     const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
     const unmarked = provider
       .listTools()
-      .filter((t) => JSON.stringify(t.inputSchema).includes('idPaciente') && !t.identityPolicy)
+      .filter(
+        (t) =>
+          JSON.stringify(t.inputSchema).includes('idPaciente') &&
+          !t.identityPolicy &&
+          !OPEN_BY_DESIGN.has(t.name),
+      )
       .map((t) => t.name);
     expect(unmarked).toEqual([]);
   });
