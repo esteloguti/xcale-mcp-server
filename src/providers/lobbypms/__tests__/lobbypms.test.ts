@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 import { ProviderErrorCode } from '../../../core/errors';
 import { SecretString } from '../../../core/secret-string';
@@ -489,5 +491,18 @@ describe('lobbypms provider — credential containment', () => {
     const p = createLobbypmsProvider({ fetchImpl: echoing });
     const result = await p.callTool('mcp_lobbypms_list_room_types', {}, CTX);
     expect(JSON.stringify(result)).not.toContain(TOKEN);
+  });
+});
+
+describe('lobbypms provider — logo', () => {
+  it('advertises a logo the gateway actually serves, in the house tile', () => {
+    expect(lobbypmsProvider.manifest.logoUrl).toBe('/assets/lobbypms.svg');
+    // Served from the repo's assets/ folder by GET /assets/:filename (no auth).
+    const file = join(process.cwd(), 'assets', 'lobbypms.svg');
+    expect(existsSync(file)).toBe(true);
+    const svg = readFileSync(file, 'utf8');
+    expect(svg).toContain('viewBox="0 0 35 35"');
+    expect(svg).toContain('<rect width="35" height="35" rx="6" fill="#000000"/>');
+    expect(svg).not.toMatch(/<script|on\w+=|javascript:/i);
   });
 });

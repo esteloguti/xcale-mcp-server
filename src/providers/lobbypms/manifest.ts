@@ -18,6 +18,8 @@ export const lobbypmsManifest: ProviderManifest = {
   slug: SLUG,
   displayName: 'LobbyPMS',
   category: 'hospitality',
+  // The house tile (black, rx 6, the mark in white), drawn from LobbyPMS's own wordmark.
+  logoUrl: `/assets/${SLUG}.svg`,
   schemaVersion: '2026-10-15',
   providerVersion: '0.1.0',
   capabilities: { webhooks: false, polling: true, pagination: true },
