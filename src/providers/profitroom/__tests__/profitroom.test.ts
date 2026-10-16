@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
@@ -835,6 +835,12 @@ describe('connect support for a credential-less consumer', () => {
       resultPath: 'hotelKey',
     });
     expect(manifest.accountContextKeys).toEqual(['hotelKey']);
+  });
+
+  it('publishes its logo, served from assets/', () => {
+    const { manifest } = createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl });
+    expect(manifest.logoUrl).toBe('/assets/profitroom.webp');
+    expect(existsSync(join(process.cwd(), 'assets', 'profitroom.webp'))).toBe(true);
   });
 
   it('get_hotel discovers hotelKey from the URL alone, as the owner pasted it', async () => {

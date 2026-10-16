@@ -234,3 +234,5 @@ Consumer: xcale-backend #1624 (the agent sends the cabins' photos on WhatsApp wi
 | T2 file names are lowercase, as the contract says | test red: `FEATURED.JPG` was accepted (the regex had `/i`)        | `PHOTO_FILE` without `/i`                                                                                                                 |
 
 - [x] `npm test` 43 files, 628 green; typecheck and format clean; live probe ok
+
+**Provider logo (2026-10-16):** test red: `manifest.logoUrl` was undefined and no asset existed. Green: `assets/profitroom.webp` (the supplied 400×400 image, converted to WebP like `erbon.webp`) and `logoUrl: /assets/profitroom.webp` in the manifest. Verified on the running gateway: `GET /assets/profitroom.webp` → 200 `image/webp`, and `/discover` lists the `logoUrl`. 629 tests green.
