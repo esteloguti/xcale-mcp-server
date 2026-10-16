@@ -61,5 +61,5 @@
 
 - Bearer auth on POST methods unverified (Q1) — stays on query `api_token`.
 - A create above one room's capacity (Q5) and the shape of a 429 (Q7) not observed yet.
-- No endpoint lists bookings (Q8): reservations made outside xcale cannot reach the CRM — asked of
+- No endpoint lists bookings (Q8): reservations made outside xcale cannot reach the CRM — still to ask
   integrations@lobbypms.com.
