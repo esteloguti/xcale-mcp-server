@@ -13,14 +13,19 @@ const fixture = (name: string): unknown =>
  * A fake engine answering each resource from the live fixtures (or an override). The photo host
  * answers a JPEG unless `photo` overrides it with a status and content type.
  */
+type PhotoReply = { status: number; type: string };
+
 function engine(
-  overrides: Record<string, unknown> & { photo?: { status: number; type: string } } = {},
+  overrides: Record<string, unknown> & {
+    photo?: PhotoReply | ((url: string) => PhotoReply);
+  } = {},
 ) {
   const urls: string[] = [];
   const fetchImpl = (async (url: string) => {
     urls.push(url);
     if (new URL(url).hostname === 'r.profitroom.pl') {
-      const photo = overrides.photo ?? { status: 200, type: 'image/jpeg' };
+      const o = overrides.photo ?? { status: 200, type: 'image/jpeg' };
+      const photo = typeof o === 'function' ? o(url) : o;
       return new Response('x', { status: photo.status, headers: { 'content-type': photo.type } });
     }
     const resource = new URL(url).pathname.split('/')[3] ?? '';
@@ -92,7 +97,12 @@ describe('profitroom drift probe', () => {
   // #145: the provider derives photo URLs from file names; if Profitroom moves its photos, the links
   // the agent sends break silently. One gallery photo is fetched daily to catch it.
   it('fetches one gallery photo and calls a non-image answer drift', async () => {
-    const { urls, fetchImpl } = engine({ photo: { status: 200, type: 'image/gif' } });
+    const { urls, fetchImpl } = engine({
+      photo: (url) =>
+        url.includes('/images/gallery/')
+          ? { status: 200, type: 'image/gif' }
+          : { status: 200, type: 'image/jpeg' },
+    });
     const report = await runDriftProbe({ fetchImpl, today: '2026-10-14' });
 
     expect(urls).toContain(
@@ -108,6 +118,46 @@ describe('profitroom drift probe', () => {
   it('calls a photo that is no longer found drift, not an outage', async () => {
     const { fetchImpl } = engine({ photo: { status: 404, type: 'text/html' } });
     const report = await runDriftProbe({ fetchImpl, today: '2026-10-14' });
+    expect(report.checks.find((c) => c.resource === 'photo')).toMatchObject({
+      ok: false,
+      failure: 'drift',
+    });
+  });
+
+  // Review of #145: the rooms schema reads the gallery leniently (.catch(null)) so a reshaped gallery
+  // never breaks the room list — which means the rooms check cannot see it. The photo check must.
+  it('calls rooms with no photo at all drift — a renamed gallery must not pass silently', async () => {
+    const rooms = (fixture('rooms') as Record<string, unknown>[]).map((r) => ({
+      ...r,
+      gallery: { photos: [] }, // Profitroom renamed `images`/`featured`
+    }));
+    const report = await runDriftProbe({
+      fetchImpl: engine({ rooms }).fetchImpl,
+      today: '2026-10-14',
+    });
+
+    expect(report.checks.find((c) => c.resource === 'rooms')?.ok).toBe(true);
+    expect(report.drifted).toBe(true);
+    expect(report.checks.find((c) => c.resource === 'photo')).toMatchObject({
+      ok: false,
+      failure: 'drift',
+    });
+  });
+
+  // Review of #145: the featured photo lives on another path (images/rooms/) — it is checked too.
+  it('checks the featured photo as well, and calls it drift when only that path breaks', async () => {
+    const { urls, fetchImpl } = engine({
+      photo: (url) =>
+        url.includes('/images/rooms/')
+          ? { status: 404, type: 'text/html' }
+          : { status: 200, type: 'image/jpeg' },
+    });
+    const report = await runDriftProbe({ fetchImpl, today: '2026-10-14' });
+
+    expect(urls).toContain(
+      'https://r.profitroom.pl/hotellapausa/images/rooms/thumbs/1134x0/e51137b9-1229-424e-8727-ec3073cbcda9.jpg',
+    );
+    expect(report.drifted).toBe(true);
     expect(report.checks.find((c) => c.resource === 'photo')).toMatchObject({
       ok: false,
       failure: 'drift',

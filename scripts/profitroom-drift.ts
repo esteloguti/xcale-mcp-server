@@ -124,35 +124,53 @@ async function check(
 }
 
 /**
- * #145: one gallery photo, at the URL the provider derives, must still be a real image. A 404 or a
- * non-image (the engine answers a 1x1 GIF on a wrong path) means Profitroom moved its photos: drift.
- * A 5xx or no answer is an outage. With no gallery photo to try, the check passes and says so.
+ * #145: the photos the provider derives must still be real images — one on each path it uses, the
+ * featured photo (`images/rooms/`) and a gallery photo (`images/gallery/`). A 404 or a non-image (the
+ * engine answers a 1x1 GIF on a wrong path) means Profitroom moved its photos: drift. A 5xx or no
+ * answer is an outage. Rooms that parse with no photo on a path are drift too (see below).
  */
 async function checkPhoto(fetchImpl: typeof fetch, rooms: unknown): Promise<DriftCheck> {
   const resource = 'photo';
-  const list = Array.isArray(rooms) ? (rooms as Parameters<typeof photosOf>[0][]) : [];
-  const url = list
-    .flatMap((room) => photosOf(room, HOTEL_KEY))
-    .find((p) => p.url.includes('/images/gallery/'))?.url;
-  if (url === undefined) return { resource, ok: true, detail: 'no gallery photo to check' };
-  try {
-    const res = await fetchImpl(url);
-    const type = res.headers.get('content-type') ?? '';
-    if (res.status >= 500) {
-      return { resource, ok: false, failure: 'unreachable', detail: `HTTP ${res.status}` };
-    }
-    if (!res.ok || !type.startsWith('image/') || type.includes('gif')) {
+  // The rooms check already reported a rooms failure; there is nothing to derive photos from.
+  if (!Array.isArray(rooms))
+    return { resource, ok: true, detail: 'rooms unavailable — not checked' };
+  const photos = (rooms as Parameters<typeof photosOf>[0][]).flatMap((room) =>
+    photosOf(room, HOTEL_KEY),
+  );
+  for (const path of ['/images/rooms/', '/images/gallery/']) {
+    const url = photos.find((p) => p.url.includes(path))?.url;
+    // The schema reads the gallery leniently (it never fails the room list), so a renamed gallery
+    // shows up here, as rooms with no photo at all. La Pausa has dozens: none is drift.
+    if (url === undefined) {
       return {
         resource,
         ok: false,
         failure: 'drift',
-        detail: `HTTP ${res.status} ${type} at ${url}`,
+        detail: `rooms parsed but no photo on ${path}`,
       };
     }
-    return { resource, ok: true, detail: 'matches' };
+    const failed = await fetchPhoto(fetchImpl, url);
+    if (failed) return { resource, ...failed };
+  }
+  return { resource, ok: true, detail: 'featured and gallery photos are images' };
+}
+
+async function fetchPhoto(
+  fetchImpl: typeof fetch,
+  url: string,
+): Promise<Omit<DriftCheck, 'resource'> | null> {
+  try {
+    const res = await fetchImpl(url);
+    const type = res.headers.get('content-type') ?? '';
+    if (res.status >= 500) {
+      return { ok: false, failure: 'unreachable', detail: `HTTP ${res.status} at ${url}` };
+    }
+    if (!res.ok || !type.startsWith('image/') || type.includes('gif')) {
+      return { ok: false, failure: 'drift', detail: `HTTP ${res.status} ${type} at ${url}` };
+    }
+    return null;
   } catch (e) {
     return {
-      resource,
       ok: false,
       failure: 'unreachable',
       detail: e instanceof Error ? e.message : 'request failed',

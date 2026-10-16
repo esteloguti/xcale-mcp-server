@@ -216,3 +216,12 @@ Consumer: xcale-backend #1624 (the agent sends the cabins' photos on WhatsApp wi
 
 - [x] `npm run typecheck` clean; provider + scripts tests 97 green
 - [x] Tool description names `photos[].url`; contract `Room.photos` (derived); `providerVersion` 0.3.0 (`schemaVersion` stays `2026-10-15`: the 0.2.0 shape never shipped)
+
+**Review fixes (pr-reviewer, 2026-10-15):**
+
+| Cycle                               | Red                                                                                                                                                                              | Green                                                                                                                                                                                                                                              |
+| :---------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R1 a reshaped gallery is drift      | test red: with `gallery` renamed, `rooms` still parsed (lenient `.catch(null)`) and `photo` answered "no gallery photo to check" — the agent would lose its photos with no alert | `checkPhoto` reports `drift` when rooms parse but carry no photo; the schema comment now says the probe catches it                                                                                                                                 |
+| R2 the featured path is checked too | test red: only a gallery URL was fetched                                                                                                                                         | `checkPhoto` fetches one featured (`images/rooms/`) and one gallery (`images/gallery/`) photo; either missing or not an image → drift. The earlier GIF test now breaks only the gallery path (its intent), since the featured one is fetched first |
+
+- [x] `npm test` 43 files, 626 green; typecheck and format clean; live probe: all six checks `ok` ("featured and gallery photos are images")
