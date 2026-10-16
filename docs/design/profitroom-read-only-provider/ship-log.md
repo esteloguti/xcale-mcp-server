@@ -1,7 +1,8 @@
 # Profitroom Provider — Ship Log
 
-- **Status:** pre-ship — built on `feat/implementation-profitroom-provider` (on top of the docs PR
-  #143), not yet merged into `dev`. Tracking: #142, epic `xcale-backend#1598`.
+- **Status:** PR open — design #143, code #144 (`feat/implementation-profitroom-provider`, stacked on
+  #143); not yet merged into `dev`. Merge #143 first, with a merge commit (not squash), then #144.
+  Tracking: #142, epic `xcale-backend#1598`.
 - **Released to prod:** not yet
 - **Release order:** deploy this **before** `xcale-backend#1599` goes live. The backend's Profitroom
   booking adapter calls `get_stay_prices`, and the connect flow needs the probe and the `hotelKey`
@@ -48,7 +49,9 @@ catalog cache, and a daily drift probe (`scripts/profitroom-drift.ts` +
 
 ### Feature flags / config
 
-- ⬜ Enable the drift workflow on GitHub once this is on `dev` (it needs no secret).
+- ⬜ Drift workflow (`.github/workflows/profitroom-drift.yml`, the repo's second workflow): GitHub runs
+  `schedule` triggers only from the default branch (`main`), so the **daily** probe starts with the
+  release to `main`. On `dev` it runs only by hand (`workflow_dispatch`). It needs no secret.
 
 ### Deploy verification (prod)
 
@@ -56,7 +59,13 @@ catalog cache, and a daily drift probe (`scripts/profitroom-drift.ts` +
 
 ## Reviews
 
-- ⬜ `/code-review` and `/security-review` before the PR.
+- ✅ `/code-review` (2026-10-15): 4 findings — `roomCount` wording, drift vs outage, cache sweep,
+  child band — all fixed in `1242849`.
+- ✅ `/security-review` (2026-10-15): no findings (SSRF, `none` before `reveal()`, link builder,
+  workflow, cache checked).
+- 2026-10-15 PR review (pr-reviewer): #143 merge-ready once the ADR is accepted; #144 code clean, held
+  on the ADR (`credential-less-provider-auth`, Proposed — Mateo's decision) and these ship-log
+  updates. The build's design corrections were carried into #143 (`a14fb0b`).
 
 ## Known gaps at ship
 
