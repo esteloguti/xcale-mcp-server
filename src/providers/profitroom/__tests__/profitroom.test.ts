@@ -365,6 +365,50 @@ describe('static tools', () => {
     expect(rooms[0]).not.toHaveProperty('gallery');
   });
 
+  // #145 — the engine names each photo only by file; the provider derives its public URL. Observed
+  // 2026-10-15: the featured photo lives under images/rooms/, the gallery under images/gallery/.
+  it('list_room_types gives each room its photo URLs: the featured one first, then the gallery in order', async () => {
+    const { fetchImpl } = fakeEngine();
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_room_types',
+      { locale: 'es' },
+      callCtx(),
+    );
+
+    const rooms = (r as { data: { photos: { url: string }[] }[] }).data;
+    const photos = rooms[0]?.photos ?? [];
+    expect(photos[0]).toEqual({
+      url: 'https://r.profitroom.pl/hotellapausa/images/rooms/thumbs/1134x0/e51137b9-1229-424e-8727-ec3073cbcda9.jpg',
+    });
+    expect(photos[1]).toEqual({
+      url: 'https://r.profitroom.pl/hotellapausa/images/gallery/thumbs/1134x0/d2715b30-47f6-4f5d-b2f1-35a5ba483a6c.jpg',
+    });
+    expect(photos).toHaveLength(9); // 1 featured + 8 gallery images
+  });
+
+  it('list_room_types still lists a room with no gallery, a reshaped one, or a file name that is not an image', async () => {
+    const rooms = structuredClone(fixture('rooms')) as Record<string, unknown>[];
+    rooms[0]!.gallery = null;
+    rooms[1]!.gallery = 'reshaped';
+    (rooms[2]!.gallery as { featured: { fileName: string } }).featured.fileName =
+      '../../other/secret.jpg';
+    const { fetchImpl } = fakeEngine({ rooms: { body: rooms } });
+
+    const r = await createProfitroomProvider({ fetchImpl }).callTool(
+      'mcp_profitroom_list_room_types',
+      { locale: 'es' },
+      callCtx(),
+    );
+
+    expect(r.kind).toBe('success');
+    const listed = (r as { data: { photos: { url: string }[] }[] }).data;
+    expect(listed).toHaveLength(6);
+    expect(listed[0]?.photos).toEqual([]);
+    expect(listed[1]?.photos).toEqual([]);
+    expect(listed[2]?.photos.every((p) => p.url.includes('/images/gallery/'))).toBe(true);
+    expect(listed[2]?.photos.some((p) => p.url.includes('secret'))).toBe(false);
+  });
+
   it('list_rates keeps profiles verbatim and falls back to the hotel language when a rate lacks one', async () => {
     const { fetchImpl } = fakeEngine();
     const r = await createProfitroomProvider({ fetchImpl }).callTool(
