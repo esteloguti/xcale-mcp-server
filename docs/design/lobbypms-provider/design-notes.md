@@ -62,6 +62,10 @@ property chose its main account. Within minutes of saving, every read answered 2
 | E13 | `GET v1/bookings/1` (an id not in the property) → **404 with an HTML "Page Not Found" body**, no `error_code` — not the documented `RECORD_NOT_FOUND` JSON. Now named `RECORD_NOT_FOUND` on that by-id read only (`unwrapLobby` `byId`). |
 | E14 | A missing required parameter (`v1/occupancy` without dates) → **422 `{"error":"The start date field is required."}`** — free text, no `error_code`; the core maps it to `INVALID_INPUT`. |
 | E15 | `v1/channels` lists the property's own channels only (Booking.com, Airbnb, Datáfono): there is no channel for xcale until the property creates one, so `channelId` stays optional in the consumer. Document types carry property-scoped ids (31729…), not the documented 1–6. |
+| E16 | **First writes, from WhatsApp through the backend** (2026-10-16, property 339654, approved by JuanJo as a test). `POST v1/bookings` answers **`{ "booking": { "booking_id": <n>, "room_id": <n> } }`** — not the documented `data: [{ idBooking, idRoom }]`. The first booking was held by the consumer as unknown because of it (a real stay, 2026-12-31 → 2027-01-02, left for the hotel to cancel). |
+| E17 | The created booking (22271056) reads back with `estatus: "provisional"`, our `nota` verbatim (**Q6 closed**: the note round-trips), and `tarifas_por_dia` equal to the `rates_per_day` we sent, 550000 and 590000 (**Q4 answered for the case that matters**: LobbyPMS keeps the prices we send). `impuesto_alojamiento` is empty for this tax-inclusive property. |
+| E18 | A booking created with `holder_name` has `cliente` and `factura_cliente` with **empty `email` and `telefono`**: the guest's contact exists only in the `note` the consumer writes. |
+| E19 | `POST v1/cancel-booking/{id}` with `TTC` cancelled it (the room's `available_rooms` went back to 1). From then on `GET v1/bookings/{id}` is the HTML **404** of E13 — a cancelled booking is never read with `deleted_at` or a cancelled `estatus`. The provider maps it to `RECORD_NOT_FOUND`. |
 
 Consequence (D8): the IP refusal is `PROVIDER_ERROR` with the machine code `IP_NOT_AUTHORIZED`, never `PROVIDER_AUTH_EXPIRED` — re-pasting a token cannot fix it.
 
@@ -93,12 +97,12 @@ Probes that touch no guest data and create nothing: `list_room_types`, `check_av
 
 | # | Question | Why it matters |
 |---|---|---|
-| Q1 | Does `Authorization: Bearer` work on every method? Does `api_token` in the query work on the POST methods? | D1's placement. |
-| Q2 | What does a call from an unauthorized IP return — status and body? And a bad token? | If the IP refusal is a 401/403 it maps to "reconnect", and the owner would re-paste a good token instead of authorizing the IP. Narrow the override only on that evidence. |
-| Q3 | Are the prices tax-inclusive? (F8 shows a separate IVA line.) In what currency? | The consumer's quote must never present a net price as the total. |
-| Q4 | If `create_booking` omits `rates_per_day`, does LobbyPMS price the stay itself, at the same value the availability read showed? | Whether the consumer sends the prices it quoted. |
+| Q1 | Partly — E11: Bearer works on GET. Does `Authorization: Bearer` work on every method? Does `api_token` in the query work on the POST methods? | D1's placement. |
+| Q2 | ✅ E5. What does a call from an unauthorized IP return — status and body? And a bad token? | If the IP refusal is a 401/403 it maps to "reconnect", and the owner would re-paste a good token instead of authorizing the IP. Narrow the override only on that evidence. |
+| Q3 | ✅ for 339654 (E12: COP, IVA included). Are the prices tax-inclusive? (F8 shows a separate IVA line.) In what currency? | The consumer's quote must never present a net price as the total. |
+| Q4 | ✅ E17 (prices sent are kept; omitting them untested). If `create_booking` omits `rates_per_day`, does LobbyPMS price the stay itself, at the same value the availability read showed? | Whether the consumer sends the prices it quoted. |
 | Q5 | Does `create_booking` with `total_adults` above one room's capacity return several `{ idBooking, idRoom }`? | F7 returns an array. |
-| Q6 | Does `get_booking` return the `note` we stamp (`nota`)? | It is the only place an idempotency reference can travel; there is no search by it (F5). |
+| Q6 | ✅ E17 — yes, verbatim. Does `get_booking` return the `note` we stamp (`nota`)? | It is the only place an idempotency reference can travel; there is no search by it (F5). |
 | Q7 | Real error statuses (422 vs 400) and the shape of a 429. | Error mapping is documented, not observed. |
 | Q8 | Is there an undocumented way to list bookings changed since a date? | Without one, reservations made outside the agent cannot reach the CRM (F5) — #1612. Ask integrations@lobbypms.com. |
 

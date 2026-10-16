@@ -221,7 +221,9 @@ export function buildLobbypmsTools(
         '`start_date`, `end_date`, `total_adults`; the holder is `holder_name` (new guest) or ' +
         '`customer_document` + `customer_nationality` (a registered customer). Optional ' +
         '`total_children`, `rates_per_day` ([{ date, price }]), `note`, `payment` (≤ the total), ' +
-        '`channel`. Returns `data: [{ idBooking, idRoom }]`, verbatim.',
+        "`channel`. Returns LobbyPMS's answer verbatim — observed `{ booking: { booking_id, room_id } }` " +
+        '(the docs say `data: [{ idBooking, idRoom }]`). A booking created with `holder_name` keeps ' +
+        "the holder's email and phone empty: put the guest's contact in `note`.",
       controlPlane: true,
       input: stayWindow({
         category_id: id,
@@ -255,7 +257,8 @@ export function buildLobbypmsTools(
         "BACKEND-ONLY. One booking's detail by its numeric id, verbatim (Spanish field names): " +
         '`id_reserva`, `estatus`, `fecha_ingreso`/`fecha_salida`, `checkin_realizado`, ' +
         '`checkout_realizado`, `numero_personas`, `tarifas_por_dia`, `impuesto_alojamiento`, ' +
-        '`categoria`, `cuarto`, `cliente`, `huespedes`, `grupo` (sibling booking ids), `deleted_at`.',
+        '`categoria`, `cuarto`, `cliente`, `huespedes`, `grupo` (sibling booking ids), `deleted_at`, ' +
+        '`nota`. A cancelled booking is no longer readable: RECORD_NOT_FOUND (observed).',
       controlPlane: true,
       input: z.object({ booking_id: id }).strict(),
       handler: async (args, ctx) =>
