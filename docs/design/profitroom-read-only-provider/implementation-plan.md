@@ -201,3 +201,18 @@ Found while designing xcale-backend #1599: the consumer's generic credential con
 - [x] `npm run typecheck`, `npm test` (43 files, 620 tests), `npm run format:check` green
 - [x] Catalog entry: `auth none`, `connectionProbe`, `contextDiscovery`, `accountContextKeys: ['hotelKey']`, context required `bookingEngineUrl` + `hotelKey`
 - [x] Live: `get_hotel` with the English URL plus extra path → `hotelKey: "hotellapausa"`
+
+### 1.10 Room photos (#145, 2026-10-15)
+
+Consumer: xcale-backend #1624 (the agent sends the cabins' photos on WhatsApp with `share_room_images`). Branch `feat/145-profitroom-room-photos`, stacked on `feat/implementation-profitroom-provider` (#144).
+
+**Evidence first:** the engine's `rooms` carries `gallery.featured` + `gallery.images[]` with file names only. Read from the engine's own page while opening a cabin's gallery, then fetched without cookies: featured → `images/rooms/thumbs/{size}/`, gallery → `images/gallery/thumbs/{size}/`; 57/57 live photos answered as real images (51 gallery JPEGs ≤ 675 KB at 1920x1000). Dead ends recorded in the contract.
+
+| Cycle                                        | Red                                     | Green                                                                                                                                                                         |
+| :------------------------------------------- | :-------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1 `list_room_types` returns `photos`        | new test red (no `photos`)              | `roomsSchema.gallery` (optional, `.catch(null)`); `photosOf(room, hotelKey)` in `mappers.ts` with a fixed host, size `1134x0`, file-name allowlist; `toRoom` takes `hotelKey` |
+| M2 missing / reshaped gallery, odd file name | passed first time — a pin, not seen red | the `.catch(null)` and the file-name allowlist from M1 already covered it                                                                                                     |
+| M3 drift probe checks one gallery photo      | 3 tests red (`photo` check missing)     | `checkPhoto` derives the URL with the provider's own `photosOf`: 404 or a non-image/GIF → drift; 5xx or no answer → unreachable. Live run: all six checks `ok`                |
+
+- [x] `npm run typecheck` clean; provider + scripts tests 97 green
+- [x] Tool description names `photos[].url`; contract `Room.photos` (derived); `providerVersion` 0.3.0 (`schemaVersion` stays `2026-10-15`: the 0.2.0 shape never shipped)
