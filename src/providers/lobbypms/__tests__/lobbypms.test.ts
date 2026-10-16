@@ -379,6 +379,19 @@ describe('lobbypms provider — errors', () => {
     expect(f.message).not.toContain('203.0.113.7');
   });
 
+  it('an unknown booking id is RECORD_NOT_FOUND — LobbyPMS answers an HTML 404 (Observed 2026-10-16)', async () => {
+    const { p } = provider('<!DOCTYPE html><title>Page Not Found</title>', 404);
+    const f = failure(await p.callTool('mcp_lobbypms_get_booking', { booking_id: 1 }, CTX));
+    expect(f.code).toBe(ProviderErrorCode.PROVIDER_ERROR);
+    expect(f.message).toBe('LobbyPMS get booking failed (HTTP 404, RECORD_NOT_FOUND)');
+  });
+
+  it('a 404 on a list route keeps no business code: it is not a missing record', async () => {
+    const { p } = provider('<!DOCTYPE html><title>Page Not Found</title>', 404);
+    const f = failure(await p.callTool('mcp_lobbypms_list_channels', {}, CTX));
+    expect(f.message).toBe('LobbyPMS list channels failed (HTTP 404)');
+  });
+
   it('a bad token is a 401 Unauthenticated and stays AUTH_EXPIRED (Observed 2026-10-15)', async () => {
     const { p } = provider({ error: 'Unauthenticated.' }, 401);
     const f = failure(await p.callTool('mcp_lobbypms_list_room_types', {}, CTX));

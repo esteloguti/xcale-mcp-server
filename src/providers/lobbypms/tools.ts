@@ -262,6 +262,7 @@ export function buildLobbypmsTools(
         unwrapLobby(
           await client.get(`v1/bookings/${seg(args.booking_id)}`, ctx.request),
           'get booking',
+          { byId: true },
         ),
     }),
     tool({

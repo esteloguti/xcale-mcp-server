@@ -49,6 +49,20 @@ Entrenubes Ecohotel y Hotel Sexto", 2026-10-15).
 | E8 | The property's own help page (screenshot from the hotel, 2026-10-15): the token lives in Configuraciones › API › Token ("does not expire, can be regenerated"); IPs are added in Configuraciones › API › **Restricciones** › Agregar dirección IP; "dynamic IPs, CIDR ranges and uncontrolled public infrastructure" are not allowed, nor serverless without a fixed IP. |
 | E9 | **Two IP lists, and only one is the API's.** The hotel added 181.53.99.97 under Configuraciones › **Restricciones IP** (the menu entry beside Usuarios), bound to a user: that list restricts where that *user* may log in to the platform ("el usuario solo podrá acceder a la plataforma desde la dirección IP configurada"). The API still answered 403 `not set as a valid ip` from that IP right after. The API allowlist is the other one, Configuraciones › API › Restricciones. Onboarding instructions must name the API tab, and warn that the user list can lock the hotel's own staff out. |
 
+### 2c. Observed — first authorized session (2026-10-16, property 339654, window 2026-11-10 → 12, read-only)
+
+The API tab's "Agregar dirección IP" form also asks for a user (it cannot be saved without one); the
+property chose its main account. Within minutes of saving, every read answered 200.
+
+| # | Observation |
+|---|---|
+| E10 | `v1/rooms`, `v1/available-rooms` (v2), `v1/rate-plans`, `v1/channels`, `v1/documents` all **200 and in the documented shapes**, field for field. Pagination `meta` as documented (`total_pages: 0` on an empty list). 200–650 ms per call. |
+| E11 | `Authorization: Bearer <token>` with no `api_token` → **200** on `v1/rooms`. Q1 answered for GET; POST untested (no write without the property's go-ahead). |
+| E12 | Prices: v2 `plans` holds only `{ id: null, name: "STANDARD_RATE" }` (`v1/rate-plans` is empty), prices per number of people up to the room's capacity (`550000` for 1 and 2 people, `650000` for 3). Magnitudes are COP. **Whether they include IVA is not in the payload** (Q3 stays open for the tax part — the property must say; `get_booking` documents a separate `impuesto_alojamiento` line). |
+| E13 | `GET v1/bookings/1` (an id not in the property) → **404 with an HTML "Page Not Found" body**, no `error_code` — not the documented `RECORD_NOT_FOUND` JSON. Now named `RECORD_NOT_FOUND` on that by-id read only (`unwrapLobby` `byId`). |
+| E14 | A missing required parameter (`v1/occupancy` without dates) → **422 `{"error":"The start date field is required."}`** — free text, no `error_code`; the core maps it to `INVALID_INPUT`. |
+| E15 | `v1/channels` lists the property's own channels only (Booking.com, Airbnb, Datáfono): there is no channel for xcale until the property creates one, so `channelId` stays optional in the consumer. Document types carry property-scoped ids (31729…), not the documented 1–6. |
+
 Consequence (D8): the IP refusal is `PROVIDER_ERROR` with the machine code `IP_NOT_AUTHORIZED`, never `PROVIDER_AUTH_EXPIRED` — re-pasting a token cannot fix it.
 
 So a bad token is a 401 with a JSON body and no `error_code`, which maps to `PROVIDER_AUTH_EXPIRED` (reconnect) — the right answer for it. Still open (Q2): what a VALID token returns from an IP the property has not authorized.

@@ -71,10 +71,21 @@ function classify(res: Extract<RequestResult, { ok: false }>, code: string | und
 /**
  * The single unwrap every LobbyPMS tool goes through. `operation` is a stable label (the tool's
  * verb). The request URL — which carries `api_token` — is never touched here.
+ *
+ * `byId` marks a read of one record by its id. Observed 2026-10-16: an unknown booking id is a 404
+ * with an HTML "Page Not Found" body and no `error_code` — so on such a read (and only there, where
+ * the route itself is known to exist) a bare 404 is named `RECORD_NOT_FOUND`, the documented code.
  */
-export function unwrapLobby(res: RequestResult, operation: string): ToolOutcome {
+export function unwrapLobby(
+  res: RequestResult,
+  operation: string,
+  opts: { byId?: boolean } = {},
+): ToolOutcome {
   if (!res.ok) {
-    const code = isIpRefusal(res.body) ? IP_NOT_AUTHORIZED : lobbyErrorCode(res.body);
+    const code = isIpRefusal(res.body)
+      ? IP_NOT_AUTHORIZED
+      : (lobbyErrorCode(res.body) ??
+        (opts.byId && res.status === 404 ? 'RECORD_NOT_FOUND' : undefined));
     return err(
       classify(res, code),
       `LobbyPMS ${operation} failed (HTTP ${res.status}${code ? `, ${code}` : ''})`,
