@@ -97,10 +97,7 @@ describe('HiMed unified provider — credential groups', () => {
   it('a tool that READS a patient document never ships without an identity policy', () => {
     // The guard for the next tool: any input naming a patient document must declare whose it is —
     // EXCEPT the create tools, which are open by the decision above (creating is not reading).
-    const OPEN_BY_DESIGN = new Set([
-      'mcp_himed_create_patient',
-      'mcp_himed_create_appointment',
-    ]);
+    const OPEN_BY_DESIGN = new Set(['mcp_himed_create_patient', 'mcp_himed_create_appointment']);
     const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
     const unmarked = provider
       .listTools()
