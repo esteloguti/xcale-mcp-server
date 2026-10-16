@@ -18,7 +18,7 @@
 | Base URL                       | `https://booking.profitroom.com/api/{hotelKey}/` (fixed host)                                                                                          | Observed                                                        |
 | Auth                           | none; header `X-Requested-With: XMLHttpRequest` on every call                                                                                          | Observed                                                        |
 | Hotel identity                 | `hotelKey` parsed from `bookingEngineUrl` (`https://booking.profitroom.com/{locale}/{hotelKey}`)                                                       | Decision AD-1/AD-2                                              |
-| Language                       | `lang={locale}` query param on `details`, `rooms`, `offers`                                                                                            | Observed (engine's own calls)                                   |
+| Language                       | every response carries all translations; `lang` is not needed and not sent — the provider picks the locale                                             | Observed                                                        |
 | Unknown hotel                  | HTTP 404 `{ "message": "auth.site_not_found" }`                                                                                                        | Observed                                                        |
 | Missing params                 | HTTP 422 `{ "<field>": ["The … field is required."] }`                                                                                                 | Observed                                                        |
 | Rate limit header              | `X-RateLimit-Limit: 1500`, `X-RateLimit-Remaining` (window unknown)                                                                                    | Observed                                                        |
@@ -41,7 +41,7 @@
 | Cache headers        | `Cache-Control: no-cache, private`, `upstream-cache-valid-time: 30`                        |
 | Latency (2026-10-14) | `rooms` 1.36 s / 45 KB · `offers` 0.66 s · `details` 0.65 s · `availability` 0.74 s        |
 
-### A.2 `GET details?lang={locale}` — hotel (fields used)
+### A.2 `GET details` — hotel (fields used)
 
 | Field                                                                              | Type                                                                     | Example                         |
 | :--------------------------------------------------------------------------------- | :----------------------------------------------------------------------- | :------------------------------ |
@@ -57,7 +57,7 @@
 | `personTypes[]`                                                                    | `{ type: 'A' \| 'C', minAge: number \| null, maxAge: number \| null }`   | `C`: 0–2                        |
 | `enabledNewChildrenOccupancyPicker`                                                | boolean                                                                  | `false`                         |
 
-### A.3 `GET rooms?lang={locale}` — room types (fields used)
+### A.3 `GET rooms` — room types (fields used)
 
 | Field                                  | Type                                                        | Example                            |
 | :------------------------------------- | :---------------------------------------------------------- | :--------------------------------- |
@@ -69,7 +69,7 @@
 | `totalRooms`                           | number                                                      | —                                  |
 | `offerIds`                             | number[]                                                    | —                                  |
 
-### A.4 `GET offers?status=1&lang={locale}` — rates (fields used)
+### A.4 `GET offers?status=1` — rates (fields used)
 
 | Field                                          | Type                                                                           | Example                   |
 | :--------------------------------------------- | :----------------------------------------------------------------------------- | :------------------------ |
@@ -146,7 +146,7 @@ Hotel-wide: `availability` means _at least one_ room type is open that night. `C
 ### A.8 Booking-engine link (Observed in the browser)
 
 ```
-https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/?check-in={YYYY-MM-DD}&check-out={YYYY-MM-DD}&r1_adults={n}{children}&currency={code}&room-id={RoomID}&offer-id={OfferID}
+https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/{RoomID}?check-in={YYYY-MM-DD}&check-out={YYYY-MM-DD}&r1_adults={n}{children}&currency={code}
 ```
 
 | `details.enabledNewChildrenOccupancyPicker` | `{children}`                                                                               | Verified                              |
@@ -154,7 +154,7 @@ https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/?check-in={YY
 | `false` (La Pausa)                          | `&r1_child{minAge}-{maxAge}={count}` per child `personTypes` bucket, e.g. `&r1_child0-2=1` | ✅ engine shows "2 adultos • 1 niño"  |
 | `true`                                      | `&r1_children_age={a},{b}`                                                                 | **Inferred** (from the engine bundle) |
 
-`room-id`/`offer-id` are accepted and preserved; whether they pre-select is **unverified** (only one room type was open on the test dates).
+`/pricelist/rooms/{RoomID}` opens that room with its rates expanded and its "book now" button (verified 2026-10-14 on 2026-11-13 → 15, four room types open). `room-id`/`offer-id` query params are accepted but pre-select nothing, and no parameter pre-selects a rate: the room page lists them all.
 
 ---
 
@@ -164,16 +164,30 @@ https://booking.profitroom.com/{locale}/{hotelKey}/pricelist/rooms/?check-in={YY
 // src/providers/profitroom/auth.ts
 export const profitroomAuth = { type: 'none' } as const satisfies ProviderAuthDescriptor;
 
-// src/providers/profitroom/context.ts — published as contextSchema
-export const profitroomContext = z.object({
-  /** Public booking-engine address, e.g. https://booking.profitroom.com/es/hotellapausa */
-  bookingEngineUrl: z.string().url().refine(isProfitroomEngineUrl, {
-    message: 'bookingEngineUrl is not a Profitroom booking engine address',
-  }),
-});
-// Handlers derive the key with hotelKeyFrom(bookingEngineUrl) — a refine (not a transform) keeps the
-// published contextSchema a plain string field.
+// src/providers/profitroom/context.ts — published as contextSchema (as built 2026-10-15)
+export const profitroomContext = z
+  .object({
+    /** Public booking-engine address the owner pasted, e.g. https://booking.profitroom.com/es/hotellapausa */
+    bookingEngineUrl, // string + URL refine (rules below)
+    /** The hotel's identity, discovered by the consumer from get_hotel at connect. */
+    hotelKey: z.string().regex(/^[a-z0-9-]{1,64}$/),
+  })
+  .strict()
+  .refine((c) => hotelKeyOf(c.bookingEngineUrl) === c.hotelKey); // they must name the same hotel
+
+// The connect-time context: the URL alone. get_hotel validates it itself (see B.1).
+export const bookingEngineUrlContext = z.object({ bookingEngineUrl });
 ```
+
+### B.1 Connect support (manifest, for a consumer's credential-less connection)
+
+| Manifest field       | Value                                                                           | Why                                                                                                                                                                           |
+| :------------------- | :------------------------------------------------------------------------------ | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `connectionProbe`    | `{ tool: 'mcp_profitroom_get_hotel' }`                                          | Proves the pasted URL names a real Profitroom hotel before a consumer saves a connection. Without it xcale-backend's `buildCredentialConfig` refuses to register the provider |
+| `contextDiscovery`   | `{ key: 'hotelKey', tool: 'mcp_profitroom_get_hotel', resultPath: 'hotelKey' }` | The owner is asked only for the URL; the consumer reads `hotelKey` out of the probe's own response                                                                            |
+| `accountContextKeys` | `['hotelKey']`                                                                  | The account is the hotel, not the URL: `/es/hotellapausa` and `/en/hotellapausa/home` are one connection                                                                      |
+
+`get_hotel` is the discovery tool, and the core exempts it from `contextSchema` validation (`src/core/provider-factory.ts:82-87`) because `hotelKey` cannot exist yet. So it parses its own context with `bookingEngineUrlContext`: a foreign URL is still refused with `PROVIDER_INVALID_INPUT` and no upstream call. Observed live 2026-10-15: `get_hotel` with only `https://booking.profitroom.com/en/hotellapausa/home?currency=COP` → `hotelKey: "hotellapausa"`.
 
 `isProfitroomEngineUrl` / `hotelKeyFrom` rules:
 
@@ -222,10 +236,10 @@ Handler-level validation (before any upstream call): `checkOut > checkIn`; `chec
 
 | Tool                                       | `input`                                                     | Backs                                              | Returns (`data`)               |
 | :----------------------------------------- | :---------------------------------------------------------- | :------------------------------------------------- | :----------------------------- |
-| `mcp_profitroom_get_hotel`                 | `{ locale? }`                                               | `details`                                          | `HotelInfo`                    |
-| `mcp_profitroom_list_room_types`           | `{ locale? }`                                               | `rooms`                                            | `RoomType[]`                   |
-| `mcp_profitroom_list_rates`                | `{ locale? }`                                               | `offers`                                           | `Rate[]`                       |
-| `mcp_profitroom_get_availability_calendar` | `{ from: isoDate, to: isoDate }` (≤ 60 days, `to` ≥ `from`) | `calendar`                                         | `CalendarDay[]`                |
+| `mcp_profitroom_get_hotel`                 | `{ locale? }`                                               | `details`                                          | `Hotel`                        |
+| `mcp_profitroom_list_room_types`           | `{ locale? }`                                               | `rooms`                                            | `Room[]`                       |
+| `mcp_profitroom_list_rates`                | `{ locale? }`                                               | `offers`                                           | `Offer[]`                      |
+| `mcp_profitroom_get_availability_calendar` | `{ from: isoDate, to: isoDate }` (≤ 60 days, `to` ≥ `from`) | `calendar`                                         | `Calendar`                     |
 | `mcp_profitroom_check_availability`        | `stayInput`                                                 | `availability` + cached `rooms`/`offers`/`details` | `StayAvailability` (no prices) |
 
 ### C.2 Routable but NOT published (`controlPlane: true`) — the money guard
@@ -236,95 +250,129 @@ Handler-level validation (before any upstream call): `checkOut > checkIn`; `chec
 
 > `get_stay_prices` is the only tool that returns money. Keeping it out of `listTools()` means the agent cannot narrate a raw, pre-tax figure; it only ever sees the consumer's `StayQuote`.
 
-### C.3 Output types
+### C.3 Output types — projection, original names (ADR 0009 Fidelity over Unification)
+
+Every field keeps Profitroom's **name and meaning**. The provider only **projects** (drops fields the agent does not need) and **flattens one locale** out of `translations[]` (`translations[locale].messages[fieldName] → fieldName`; HTML descriptions stay HTML). Nothing is renamed or re-coded: `profiles[].type` stays `"elastic"`, `CTD` stays `CTD`. Joins **nest** the referenced resource under its own name next to the proposal and never merge fields. The few fields that do not exist upstream are marked **derived**, with their rule.
 
 ```ts
-interface HotelInfo {
-  name: string;
-  description?: string; // HTML stripped to text
-  currency: string; // ISO 4217, e.g. "COP"
-  timeZone: string; // IANA
-  checkInAfter?: string; // "HH:mm"
-  checkOutBefore?: string; // "HH:mm"
-  address?: { street?: string; city?: string; postalCode?: string; country?: string };
-  locales: string[]; // live locales only
+// get_hotel — projection of `details`
+interface Hotel {
+  name: string; // translations[locale].name
+  description?: string; // translations[locale].description (HTML, verbatim)
+  defaultCurrency: { code: string }; // verbatim
+  timeZone: string; // verbatim, IANA
+  locales: { locale: string; isLive: boolean }[]; // verbatim, live only
   defaultLocale: string;
-  maxRoomsPerReservation?: number;
-  childAgeRange?: { minAge: number; maxAge: number }; // from personTypes C; absent = no child pricing
-  bookingEngineUrl: string; // https://booking.profitroom.com/{locale}/{hotelKey}
+  address?: {
+    street?: string;
+    city?: string;
+    postalCode?: string;
+    country?: string;
+    coordinates?: { latitude: number; longitude: number };
+  };
+  personTypes: { type: string; minAge: number | null; maxAge: number | null }[]; // verbatim
+  config: {
+    // verbatim subset of `config`, original keys
+    'Hotel.CheckinAfter'?: string;
+    'Hotel.CheckoutBefore'?: string;
+    'be.taxesPresentationMode'?: string;
+    'be.maxRoomsPerReservation'?: string;
+  };
+  bookingEngineUrl: string; // derived: https://booking.profitroom.com/{locale}/{hotelKey}
+  hotelKey: string; // derived: the hotel's identity (read by a consumer as contextDiscovery)
 }
 
-interface RoomType {
+// list_room_types — projection of each `rooms[]` item
+interface Room {
   id: number;
-  name: string;
-  description?: string; // text
-  beds?: string;
-  view?: string; // from `sight`
-  areaM2?: number;
-  maxPeople: number;
-  maxAdults: number;
-  maxChildren: number; // 0 when the room takes no children
-  rateIds: number[];
+  name: string; // translations[locale].name
+  description?: string; // translations[locale].description (HTML)
+  bedsDescription?: string;
+  sight?: string;
+  attributes: {
+    area?: { from: number; to: number; unit: string };
+    maxOccupancy?: { people: number; extraBeds: number | null }; // extraBeds null on 2 of 6 La Pausa rooms (Observed)
+  };
+  limits: { min: Occupancy; max: Occupancy }; // verbatim
+  totalRooms: number;
+  offerIds: number[];
+}
+interface Occupancy {
+  numberOfPeople: number;
+  occupancy: { adults: number; children: { minAge: number; maxAge: number; count: number }[] };
 }
 
-interface Rate {
+// list_rates — projection of each `offers[]` item
+interface Offer {
   id: number;
-  name: string;
-  description?: string; // text; this is where inclusions live (e.g. breakfast)
-  roomTypeIds: number[];
-  terms: RateTerms[]; // one per profile
-  restrictions: { availableFrom?: string; availableTo?: string; minNights?: number };
+  type: string;
+  name: string; // translations[locale].name
+  description?: string; // translations[locale].description (HTML) — inclusions live here
+  intro?: string;
+  roomIds: number[];
+  profiles: Profile[]; // verbatim projection
+  restrictions: {
+    availableFrom: string | null;
+    availableTo: string | null;
+    minNights: number | null;
+    availableWeekDays: number[];
+  };
 }
-
-interface RateTerms {
+interface Profile {
   profileId: number;
-  kind: 'flexible' | 'non_refundable' | 'other'; // 'elastic' → 'flexible'; 'nonref' → 'non_refundable'; else 'other' (raw kept in `rawKind`)
-  rawKind: string;
-  depositPercentage?: number; // e.g. 30
-  freeCancellationUntil?: { amount: number; unit: string }; // e.g. { amount: 7, unit: 'days' } before arrival
-  remainingPayment?: string; // e.g. 'upon_arrival'
+  type: string; // e.g. "elastic" — not re-coded
+  deposit: { percentage: number | null; nights: number | null } | null;
+  params: {
+    cancelTime: string | null;
+    cancelUnit: string | null;
+    remainingPaymentType: string | null;
+  };
 }
 
-interface CalendarDay {
-  date: string; // YYYY-MM-DD
-  open: boolean; // at least one room type sellable
-  minNights: number;
-  maxNights?: number;
-  closedToDeparture: boolean;
+// get_availability_calendar — projection of `calendar`
+interface Calendar {
+  from: string;
+  to: string;
+  dates: {
+    date: string;
+    availability: boolean;
+    minLOS: number;
+    maxLOS: number | null;
+    CTD: boolean;
+  }[];
 }
 
+// check_availability — no money
 interface StayAvailability {
-  available: boolean; // false ⇔ options is empty
-  reason?: 'party_does_not_fit_one_room'; // set only when the engine re-split the party (v1 quotes one room)
   checkIn: string;
   checkOut: string;
-  nights: number;
-  occupancy: { adults: number; childrenAges: number[] };
-  options: StayOption[];
+  occupancy: { adults: number; childrenAges: number[] }; // the request, echoed
+  available: boolean; // derived: proposals.length > 0
+  reason?: 'party_does_not_fit_one_room'; // derived, see C.4
+  proposals: StayProposal[];
+}
+interface StayProposal {
+  OfferID: number;
+  RoomID: number;
+  profileId: number;
+  roomCount: number; // engine's value, verbatim — meaning unconfirmed (4 observed for a room with totalRooms 1); never a count of rooms left
+  room: { id: number; name: string }; // nested from list_room_types
+  offer: { id: number; name: string; description?: string }; // nested from list_rates
+  profile: Profile; // nested: the offer's profile with this profileId
 }
 
-interface StayOption {
-  roomTypeId: number;
-  roomTypeName: string;
-  rateId: number;
-  rateName: string;
-  rateDescription?: string;
-  terms: RateTerms;
-  roomsLeft: number;
+// get_stay_prices — controlPlane only
+interface StayPrices extends Omit<StayAvailability, 'proposals'> {
+  currency: string; // details.defaultCurrency.code
+  taxesPresentationMode: string; // verbatim config value, e.g. "net"
+  taxesIncluded: boolean; // derived: taxesPresentationMode !== 'net'
+  proposals: PricedStayProposal[];
 }
-
-// controlPlane only
-interface StayPrices extends Omit<StayAvailability, 'options'> {
-  currency: string;
-  taxesIncluded: boolean; // false when be.taxesPresentationMode === 'net'
-  options: PricedStayOption[];
-}
-
-interface PricedStayOption extends StayOption {
-  price: number; // whole stay, all nights, this occupancy, in `currency`
-  originalPrice?: number; // present when a discount applies
-  discountValidUntil?: string; // ISO 8601 with offset, from discounts[].availableTo
-  bookingUrl: string; // §A.8, built with the request's dates, occupancy, locale, room and rate
+interface PricedStayProposal extends StayProposal {
+  price: { amount: number; currency: string }; // verbatim — whole stay, this occupancy
+  originalPrice: { amount: number; currency: string } | null; // verbatim
+  discounts: { amount: number; availableTo: string }[]; // verbatim projection
+  bookingUrl: string; // derived: §A.8 with the request's dates, occupancy, locale and RoomID
 }
 ```
 
@@ -334,11 +382,11 @@ interface PricedStayOption extends StayOption {
 | :---------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | A response fails its zod schema (fields used only)                                              | `PROVIDER_ERROR` "unexpected response from Profitroom ({endpoint}: {zod path} {issue})" — the path, never the body. Providers have no logger seam; the consumer logs `ToolResult` errors |
 | A proposal's `RoomID`/`OfferID`/`profileId` not in the cache                                    | refresh `rooms`+`offers` once; still missing → `PROVIDER_ERROR`                                                                                                                          |
-| More than one group in the response, or the single group's echoed occupancy ≠ the requested one | success, `available: false`, `options: []`, `reason: 'party_does_not_fit_one_room'` — never a price for a different party or a partial split                                             |
+| More than one group in the response, or the single group's echoed occupancy ≠ the requested one | success, `available: false`, `proposals: []`, `reason: 'party_does_not_fit_one_room'` — never a price for a different party or a partial split                                           |
 | `proposal.price.currency` ≠ `details.defaultCurrency.code`                                      | `PROVIDER_ERROR`                                                                                                                                                                         |
 | `price.amount` not a finite number > 0                                                          | `PROVIDER_ERROR`                                                                                                                                                                         |
-| `[]` or empty `proposals`                                                                       | success, `available: false`, `options: []`                                                                                                                                               |
-| Cache                                                                                           | `details`, `rooms`, `offers` per `hotelKey`+`locale`, 15 min, in memory; `availability`/`calendar` never                                                                                 |
+| `[]` or empty `proposals`                                                                       | success, `available: false`, `proposals: []`                                                                                                                                             |
+| Cache                                                                                           | `details`, `rooms`, `offers` per `hotelKey` and request URL, 15 min, in memory; `availability`/`calendar` never                                                                          |
 
 ### C.5 Error mapping
 
@@ -357,64 +405,56 @@ interface PricedStayOption extends StayOption {
 
 Fixtures are the raw 2026-10-14 responses, saved under `src/providers/profitroom/__fixtures__/` (`details.json`, `rooms.json`, `offers.json`, `calendar.json`, `availability.json`, `availability-child.json`, `availability-dropped-child.json`, `site-not-found.json`).
 
-**`check_availability` — available** (2 adults, 2026-10-23 → 2026-10-25):
+**`check_availability` — available** (2 adults, 2026-10-23 → 2026-10-25, `locale: es`):
 
 ```json
 {
-  "available": true,
   "checkIn": "2026-10-23",
   "checkOut": "2026-10-25",
-  "nights": 2,
   "occupancy": { "adults": 2, "childrenAges": [] },
-  "options": [
+  "available": true,
+  "proposals": [
     {
-      "roomTypeId": 230226,
-      "roomTypeName": "Cabaña Doble con Jacuzzi",
-      "rateId": 380900,
-      "rateName": "Tarifa Estándar",
-      "terms": {
+      "OfferID": 380900,
+      "RoomID": 230226,
+      "profileId": 212614,
+      "roomCount": 4,
+      "room": { "id": 230226, "name": "Cabaña Doble con Jacuzzi" },
+      "offer": { "id": 380900, "name": "Tarifa Estándar", "description": "<p>…</p>" },
+      "profile": {
         "profileId": 212614,
-        "kind": "flexible",
-        "rawKind": "elastic",
-        "depositPercentage": 30,
-        "freeCancellationUntil": { "amount": 7, "unit": "days" },
-        "remainingPayment": "upon_arrival"
-      },
-      "roomsLeft": 4
+        "type": "elastic",
+        "deposit": { "percentage": 30, "nights": null },
+        "params": {
+          "cancelTime": "7",
+          "cancelUnit": "days",
+          "remainingPaymentType": "upon_arrival"
+        }
+      }
     }
   ]
 }
 ```
 
-**`get_stay_prices` — same search** (controlPlane):
+**`get_stay_prices` — same search** (controlPlane): the same object, plus these fields at the top and on each proposal:
 
 ```json
 {
-  "available": true,
-  "checkIn": "2026-10-23",
-  "checkOut": "2026-10-25",
-  "nights": 2,
-  "occupancy": { "adults": 2, "childrenAges": [] },
   "currency": "COP",
+  "taxesPresentationMode": "net",
   "taxesIncluded": false,
-  "options": [
+  "proposals": [
     {
-      "roomTypeId": 230226,
-      "roomTypeName": "Cabaña Doble con Jacuzzi",
-      "rateId": 380900,
-      "rateName": "Tarifa Estándar",
-      "terms": { "profileId": 212614, "kind": "flexible", "rawKind": "elastic" },
-      "roomsLeft": 4,
-      "price": 1411000,
-      "originalPrice": 1510000,
-      "discountValidUntil": "2026-10-30T00:00:00-05:00",
-      "bookingUrl": "https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&currency=COP&room-id=230226&offer-id=380900"
+      "price": { "amount": 1411000, "currency": "COP" },
+      "originalPrice": { "amount": 1510000, "currency": "COP" },
+      "discounts": [{ "amount": -99000, "availableTo": "2026-10-30T00:00:00-05:00" }],
+      "bookingUrl": "https://booking.profitroom.com/es/hotellapausa/pricelist/rooms/230226?check-in=2026-10-23&check-out=2026-10-25&r1_adults=2&currency=COP"
     }
   ]
 }
 ```
 
-**No availability:** `{ "available": false, ..., "options": [] }` (success).
+**No availability:** `{ "available": false, ..., "proposals": [] }` (success).
 
 **Child out of range** (`childrenAges: [7]` at La Pausa): `{ isError: true, code: "PROVIDER_INVALID_INPUT", message: "children older than 2 count as adults at this hotel" }`.
 
@@ -432,10 +472,10 @@ Fixtures are the raw 2026-10-14 responses, saved under `src/providers/profitroom
 
 ## F. Roadmap
 
-| Phase             | Scope                                                                                  | Trigger                                  |
-| :---------------- | :------------------------------------------------------------------------------------- | :--------------------------------------- |
-| 0                 | `none` auth variant (core)                                                             | ADR accepted                             |
-| **This contract** | 5 menu reads + `controlPlane` `get_stay_prices`; parsing; errors; drift probe          | after phase 0                            |
-| Fast-follow       | `rooms` max > 1 (additive); confirm `room-id`/`offer-id` pre-selection                 | demand / a date with ≥ 2 room types open |
-| Consumer          | `profitroom-stay-truth` → `StayQuote` (with unknown-tax handling), secret-less connect | matesjara/xcale-backend#1599             |
-| Partner API       | real bookings, CRM sync                                                                | matesjara/xcale-backend#1600 (blocked)   |
+| Phase             | Scope                                                                                  | Trigger                                |
+| :---------------- | :------------------------------------------------------------------------------------- | :------------------------------------- |
+| 0                 | `none` auth variant (core)                                                             | ADR accepted                           |
+| **This contract** | 5 menu reads + `controlPlane` `get_stay_prices`; parsing; errors; drift probe          | after phase 0                          |
+| Fast-follow       | `rooms` max > 1 (additive)                                                             | demand                                 |
+| Consumer          | `profitroom-stay-truth` → `StayQuote` (with unknown-tax handling), secret-less connect | matesjara/xcale-backend#1599           |
+| Partner API       | real bookings, CRM sync                                                                | matesjara/xcale-backend#1600 (blocked) |
