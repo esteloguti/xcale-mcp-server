@@ -62,6 +62,7 @@ describe('HiMed unified provider — credential groups', () => {
     const provider = createHimedProvider({ ...HOSTS, fetchImpl: fakeFetch(200, []) });
     const byName = Object.fromEntries(provider.listTools().map((t) => [t.name, t]));
     // Reads and modifications of an EXISTING patient stay gated — this is the leak the gate exists for.
+    // `alwaysEnforce` because health data (Ley 1581) is not the clinic's to leave unprotected.
     for (const name of [
       'mcp_himed_update_patient',
       'mcp_himed_patient_exists',
@@ -70,6 +71,7 @@ describe('HiMed unified provider — credential groups', () => {
       expect(byName[name]?.identityPolicy, name).toEqual({
         mode: 'subject-bound',
         identityFields: ['idPaciente'],
+        alwaysEnforce: true,
       });
     }
     // Cancel is also record-owned (Tier 1): a patient may cancel the cita THEY booked here.
@@ -77,10 +79,12 @@ describe('HiMed unified provider — credential groups', () => {
       mode: 'subject-bound',
       identityFields: ['idPaciente'],
       recordOwnershipField: 'idCita',
+      alwaysEnforce: true,
     });
     expect(byName['mcp_himed_change_patient_document']?.identityPolicy).toEqual({
       mode: 'subject-bound',
       identityFields: ['idPacienteActual', 'idPacienteNuevo'],
+      alwaysEnforce: true,
     });
   });
 

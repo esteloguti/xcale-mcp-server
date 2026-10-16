@@ -62,12 +62,17 @@ export function buildHimedTools(
 
   /**
    * The patient a call acts on, named by their document number (ADR 0019). Every tool that reads or
-   * changes ONE patient's records or appointments declares it, so a consumer can refuse a call for a
-   * patient who is not the person writing. Binding a document number to that person is the
+   * changes ONE EXISTING patient's records or appointments declares it, so a consumer can refuse a
+   * call for a patient who is not the person writing. Binding a document number to that person is the
    * consumer's job — this server only says which field names the patient.
+   *
+   * `alwaysEnforce: true` because this is health data (Ley 1581): its protection is not the clinic's
+   * to opt out of, so the consumer gates it regardless of the tenant's identity mode. (The CREATE
+   * tools — book/register — carry no policy at all and stay open; creating is not reading someone's
+   * records.)
    */
   const actsOnPatient = (...identityFields: string[]) =>
-    ({ mode: 'subject-bound', identityFields }) as const;
+    ({ mode: 'subject-bound', identityFields, alwaysEnforce: true }) as const;
 
   /** Autoagendamiento dispatch: adds `accion` + `codigo_servicio` (context); the materializer injects `token`. */
   const call = (ctx: Ctx, accion: string, fields: Record<string, unknown>) =>
