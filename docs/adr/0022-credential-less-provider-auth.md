@@ -1,4 +1,4 @@
-# ADR: Credential-less providers — the `none` auth variant
+# ADR 0022: Credential-less providers — the `none` auth variant
 
 - **Status:** Proposed
 - **Date:** 2026-10-14

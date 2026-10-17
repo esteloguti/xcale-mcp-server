@@ -1,6 +1,6 @@
 # Profitroom Read-Only Provider — Implementation Plan
 
-> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/credential-less-provider-auth.md)
+> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md)
 > **Issue**: matesjara/xcale-mcp-server#142 · **Status**: Planned · **Last updated**: 2026-10-14
 > **Language note**: English per this repo's `CLAUDE.md` (design docs are durable).
 
@@ -24,14 +24,15 @@ Done means: `tools/list` shows the five menu tools and not `get_stay_prices`. A 
 
 ```
 src/core/
-  provider-port.ts                              MODIFIED
-  auth/authentication-materializer.ts           MODIFIED
-  testing/provider-conformance.ts               MODIFIED
-  __tests__/credential-less-provider.test.ts    NEW
-docs/adr/credential-less-provider-auth.md       NEW
-docs/adr/README.md                              MODIFIED
-CONTEXT.md                                      MODIFIED
-docs/design/profitroom-read-only-provider/      NEW
+  provider-port.ts                         MODIFIED
+  auth/authentication-materializer.ts      MODIFIED
+  auth/__tests__/authentication-materializer.test.ts   MODIFIED
+  testing/provider-conformance.ts          MODIFIED
+  __tests__/catalog.test.ts                MODIFIED
+docs/adr/0022-credential-less-provider-auth.md  NEW (written)
+docs/adr/README.md                         MODIFIED (written)
+CONTEXT.md                                 MODIFIED (written)
+docs/design/profitroom-read-only-provider/ NEW (written)
 ```
 
 ### 0.2 Per-file changes (as built 2026-10-14)
