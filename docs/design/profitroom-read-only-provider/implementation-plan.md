@@ -1,14 +1,14 @@
 # Profitroom Read-Only Provider — Implementation Plan
 
-> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/credential-less-provider-auth.md)
+> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md)
 > **Issue**: matesjara/xcale-mcp-server#142 · **Status**: Planned · **Last updated**: 2026-10-14
 > **Language note**: English per this repo's `CLAUDE.md` (design docs are durable).
 
 ## Meta-description
 
-Two phases on **one code branch** (`feat/implementation-profitroom-provider`), one PR to `dev`, with the core and the provider in **separate commits** so the core change can be reviewed on its own. **Phase 0** adds the `none` auth variant to the core: one union member, one early return in the materializer, one conformance case, plus tests. **Phase 1** builds `src/providers/profitroom/` on top of it. That means a fixed-base, header-only client with a 15-minute in-memory cache for static resources and zod validation of every response (fail closed), five money-free menu tools, a `controlPlane` `get_stay_prices`, the booking-link builder, a one-line registration, and a daily drift workflow that reuses the provider's own zod schemas.
+Two phases on **one code branch** (`feat/implementation-profitroom-provider`), one PR to `dev`, with the core and the provider in **separate commits** so the core change can be reviewed on its own. **Phase 0** adds the `none` auth variant to the core: one union member, one early return in the materializer, one conformance case, plus tests. **Phase 1** builds `src/providers/profitroom/` on top of it. That means a fixed-base, header-only client with a 15-minute in-memory cache for static resources and zod validation of every response (fail closed), five money-free menu tools, a `get_stay_prices` (built `controlPlane`; published since 2026-10-17), the booking-link builder, a one-line registration, and a daily drift workflow that reuses the provider's own zod schemas.
 
-Done means: `tools/list` shows the five menu tools and not `get_stay_prices`. A `tools/call` against live `hotellapausa` returns real rooms, rates, calendar and proposals (`mcp-contract-qa`). Every fail-closed rule in contract §C.4 has a fixture test. The drift workflow runs green on `workflow_dispatch`.
+Done means: `tools/list` shows the five menu tools and, since Mateo, 2026-10-17, xcale-mcp-server#149, `get_stay_prices` too. A `tools/call` against live `hotellapausa` returns real rooms, rates, calendar and proposals (`mcp-contract-qa`). Every fail-closed rule in contract §C.4 has a fixture test. The drift workflow runs green on `workflow_dispatch`.
 
 > **One PR, not two (changed 2026-10-14).** The first draft split phase 0 and phase 1 into two PRs, because Provider Self-Containment keeps `src/core` out of a provider PR and ADR 0017 escalates core changes. With no stacked PRs allowed, a separate phase 1 PR would have to wait for phase 0 to merge. Sara chose one code branch over the docs branch (#143) instead. The core change stays isolated in its own commit (`feat(core): …`), is escalated to Mateo by nature (this is a manual PR, not `/implement`), and the PR body calls it out.
 
@@ -24,14 +24,15 @@ Done means: `tools/list` shows the five menu tools and not `get_stay_prices`. A 
 
 ```
 src/core/
-  provider-port.ts                              MODIFIED
-  auth/authentication-materializer.ts           MODIFIED
-  testing/provider-conformance.ts               MODIFIED
-  __tests__/credential-less-provider.test.ts    NEW
-docs/adr/credential-less-provider-auth.md       NEW
-docs/adr/README.md                              MODIFIED
-CONTEXT.md                                      MODIFIED
-docs/design/profitroom-read-only-provider/      NEW
+  provider-port.ts                         MODIFIED
+  auth/authentication-materializer.ts      MODIFIED
+  auth/__tests__/authentication-materializer.test.ts   MODIFIED
+  testing/provider-conformance.ts          MODIFIED
+  __tests__/catalog.test.ts                MODIFIED
+docs/adr/0022-credential-less-provider-auth.md  NEW (written)
+docs/adr/README.md                         MODIFIED (written)
+CONTEXT.md                                 MODIFIED (written)
+docs/design/profitroom-read-only-provider/ NEW (written)
 ```
 
 ### 0.2 Per-file changes (as built 2026-10-14)

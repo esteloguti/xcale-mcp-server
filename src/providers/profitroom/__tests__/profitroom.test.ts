@@ -533,7 +533,7 @@ describe('get_availability_calendar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// S5 — the stay: check_availability (no money) and get_stay_prices (controlPlane). Contract §C.2–§C.4.
+// S5 — the stay: check_availability (no money) and get_stay_prices (with money). Contract §C.2–§C.4.
 // ---------------------------------------------------------------------------
 
 /** "Today" before the fixture stay (2026-10-23 → 25), so the fixtures stay valid forever. */
@@ -715,10 +715,11 @@ describe('check_availability', () => {
   });
 });
 
-describe('get_stay_prices (backend-only money guard)', () => {
-  it('is routable by the backend but absent from the agent menu', () => {
+describe('get_stay_prices', () => {
+  // Mateo, 2026-10-17 (xcale-mcp-server#149): a hotel's agent may read its PMS's prices. No money guard.
+  it('is published to the agent and routable by the backend', () => {
     const provider = createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl });
-    expect(provider.listTools().map((t) => t.name)).not.toContain('mcp_profitroom_get_stay_prices');
+    expect(provider.listTools().map((t) => t.name)).toContain('mcp_profitroom_get_stay_prices');
     expect(provider.routableToolNames()).toContain('mcp_profitroom_get_stay_prices');
   });
 
@@ -799,7 +800,7 @@ describe('profitroom provider integration', () => {
     await runProviderConformance(createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl }));
   });
 
-  it('is registered, credential-less, and publishes five money-free menu tools', () => {
+  it('is registered, credential-less, and publishes its six read tools, prices included', () => {
     const provider = PROVIDERS.find((p) => p.manifest.slug === 'profitroom');
     expect(provider?.auth).toEqual({ type: 'none' });
     expect(provider?.contextSchema).toMatchObject({
@@ -815,6 +816,7 @@ describe('profitroom provider integration', () => {
       'mcp_profitroom_check_availability',
       'mcp_profitroom_get_availability_calendar',
       'mcp_profitroom_get_hotel',
+      'mcp_profitroom_get_stay_prices',
       'mcp_profitroom_list_rates',
       'mcp_profitroom_list_room_types',
     ]);

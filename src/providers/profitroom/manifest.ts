@@ -20,7 +20,7 @@ export const profitroomManifest: ProviderManifest = {
   displayName: 'Profitroom',
   category: 'hospitality',
   logoUrl: `/assets/${SLUG}.webp`,
-  schemaVersion: '2026-10-15',
+  schemaVersion: '2026-10-17',
   providerVersion: '0.3.0',
   connectionProbe: { tool: `mcp_${SLUG}_get_hotel` },
   contextDiscovery: { key: 'hotelKey', tool: `mcp_${SLUG}_get_hotel`, resultPath: 'hotelKey' },

@@ -176,7 +176,7 @@ export function buildProfitroomTools(
         'room (`room`), the rate (`offer`, whose description says what it includes) and its payment ' +
         'and cancellation terms (`profile`), plus `roomCount`, the engine value — its meaning is not confirmed ' +
         '(it is NOT a verified count of rooms left), so never tell the guest how many remain. It carries NO ' +
-        'price: the price reaches the guest only through the booking flow. `available: false` means ' +
+        'price: `get_stay_prices` returns the same proposals with money. `available: false` means ' +
         'nothing can be sold for that stay and party.',
       input: stayInput,
       readOnly: true,
@@ -188,18 +188,19 @@ export function buildProfitroomTools(
       },
     }),
     tool({
-      // BACKEND-ONLY (`controlPlane`, the money guard — as Erbon's get_rate_prices): out of `listTools()`,
-      // in `routableToolNames()`. The consumer turns this into its `StayQuote`; the agent never narrates
-      // a raw, pre-tax engine price (feature design §6.2, contract §C.2).
+      // Published to the agent (Mateo, 2026-10-17, xcale-mcp-server#149): a hotel's agent may read its
+      // PMS's prices — which tools it carries is the tenant's choice. The consumer also calls it from the
+      // server to build its `StayQuote`, the recommended way to quote (contract §C.2).
       name: `mcp_${SLUG}_get_stay_prices`,
       description:
-        'BACKEND-ONLY. The check_availability proposals with money: each adds `price` (whole stay, this ' +
-        'party, verbatim), `originalPrice`, `discounts` and a `bookingUrl` that opens the hotel engine ' +
-        'with the stay pre-filled. Top level adds `currency`, the verbatim `taxesPresentationMode` and ' +
-        '`taxesIncluded` (false when the engine shows prices net of taxes it adds at checkout).',
-      controlPlane: true,
+        'The check_availability proposals with money: each adds `price` (whole stay, this party, ' +
+        'verbatim), `originalPrice`, `discounts` and a `bookingUrl` that opens the hotel engine with the ' +
+        'stay pre-filled. Top level adds `currency`, the verbatim `taxesPresentationMode` and ' +
+        '`taxesIncluded` (false when the engine shows prices net of taxes it adds at checkout, so the ' +
+        'price is not the total the guest pays). Nothing is reserved by this read.',
       input: stayInput,
       readOnly: true,
+      audience: 'customer',
       handler: async (args, ctx) => {
         const hotel = await loadHotel(client, ctx.request, ctx.metadata, args.locale);
         if (!hotel.ok) return err(hotel.code, hotel.message);
