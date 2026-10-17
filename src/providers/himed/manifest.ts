@@ -14,11 +14,14 @@ export const himedManifest: ProviderManifest = {
   displayName: 'HiMed',
   category: 'health',
   logoUrl: '/assets/himed.svg',
-  // Bumped (2026-10-14 review): every tool that reads or changes one patient publishes a
-  // `subject-bound` identityPolicy on `idPaciente` (the two reads were mislabeled `subject-scoped`), and
-  // create_appointment requires `parentescoPideCita` instead of defaulting it.
-  schemaVersion: '2026-10-14',
-  providerVersion: '0.4.0',
+  // Bumped (2026-10-17): the published identity policies changed — every patient tool now carries
+  // `alwaysEnforce: true`, `cancel_appointment` carries `recordOwnershipField: 'idCita'`, and
+  // `create_appointment` / `create_patient` carry no policy. A consumer caching the 2026-10-14 menu
+  // would keep the old policies (no `alwaysEnforce` ⇒ unenforced under a tenant's `off`), so the
+  // bump is what makes the protection reach it. (2026-10-14: patient tools became `subject-bound` on
+  // `idPaciente`; create_appointment requires `parentescoPideCita`.)
+  schemaVersion: '2026-10-17',
+  providerVersion: '0.5.0',
   connectionProbe: { tool: `mcp_${SLUG}_list_locations` },
   accountContextKeys: ['codigo_servicio'],
 };
