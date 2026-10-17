@@ -1,4 +1,4 @@
-# ADR: A tool's audience travels in `_meta`, under `xcale.app/audience`
+# ADR 0021: A tool's audience travels in `_meta`, under `xcale.app/audience`
 
 - **Status:** Proposed
 - **Date:** 2026-10-14
