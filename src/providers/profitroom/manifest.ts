@@ -19,7 +19,7 @@ export const profitroomManifest: ProviderManifest = {
   slug: SLUG,
   displayName: 'Profitroom',
   category: 'hospitality',
-  schemaVersion: '2026-10-15',
+  schemaVersion: '2026-10-17',
   providerVersion: '0.2.0',
   connectionProbe: { tool: `mcp_${SLUG}_get_hotel` },
   contextDiscovery: { key: 'hotelKey', tool: `mcp_${SLUG}_get_hotel`, resultPath: 'hotelKey' },
