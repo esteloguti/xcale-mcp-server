@@ -2,7 +2,7 @@
 
 > **Module**: `src/providers/profitroom/` (xcale-mcp-server). Connection registration and the `StayQuote` live in xcale-backend (Rail A + booking module, matesjara/xcale-backend#1599), referenced here, not re-specified.
 > **Kind**: External-provider adapter contract (NOT an internal `/api/v1` REST module). It documents three surfaces: (A) the **Profitroom booking-engine API** as Observed, (B) the **`authDescriptor` + context** (concrete), (C) the **MCP tool contract** the provider publishes.
-> **Upstream**: [feature-design.md](feature-design.md) · ADR [credential-less-provider-auth](../../adr/credential-less-provider-auth.md).
+> **Upstream**: [feature-design.md](feature-design.md) · ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md).
 > **Status**: Draft.
 > **Language note**: English per this repo's `CLAUDE.md` (design docs are durable).
 > **Last updated**: 2026-10-14.

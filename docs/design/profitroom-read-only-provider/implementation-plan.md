@@ -1,6 +1,6 @@
 # Profitroom Read-Only Provider — Implementation Plan
 
-> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/credential-less-provider-auth.md)
+> **Upstream**: [feature-design.md](feature-design.md) · [api-contract.md](api-contract.md) · ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md)
 > **Issue**: matesjara/xcale-mcp-server#142 · **Status**: Planned · **Last updated**: 2026-10-14
 > **Language note**: English per this repo's `CLAUDE.md` (design docs are durable).
 
@@ -29,7 +29,7 @@ src/core/
   auth/__tests__/authentication-materializer.test.ts   MODIFIED
   testing/provider-conformance.ts          MODIFIED
   __tests__/catalog.test.ts                MODIFIED
-docs/adr/credential-less-provider-auth.md  NEW (written)
+docs/adr/0022-credential-less-provider-auth.md  NEW (written)
 docs/adr/README.md                         MODIFIED (written)
 CONTEXT.md                                 MODIFIED (written)
 docs/design/profitroom-read-only-provider/ NEW (written)
