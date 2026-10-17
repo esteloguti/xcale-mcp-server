@@ -738,8 +738,8 @@ describe('erbon provider — list_currencies', () => {
 describe('erbon provider — logo', () => {
   it('advertises a logo the gateway actually serves', () => {
     const logoUrl = erbonProvider.manifest.logoUrl;
-    expect(logoUrl).toBe('/assets/erbon.webp');
+    expect(logoUrl).toBe('/assets/erbon.svg');
     // Served from the repo's assets/ folder by GET /assets/:filename (no auth).
-    expect(existsSync(join(process.cwd(), 'assets', 'erbon.webp'))).toBe(true);
+    expect(existsSync(join(process.cwd(), 'assets', 'erbon.svg'))).toBe(true);
   });
 });
