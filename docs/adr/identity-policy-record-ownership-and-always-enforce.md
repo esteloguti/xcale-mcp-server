@@ -1,4 +1,4 @@
-# ADR: The identity policy gains `recordOwnershipField` and `alwaysEnforce`
+# ADR: The identity policy gains `recordOwnershipField`, `ownedResultField` and `alwaysEnforce`
 
 - **Status:** Proposed
 - **Date:** 2026-10-17
@@ -28,13 +28,20 @@ HiMed exposed two things that shape cannot say:
 
 ## Decision
 
-`ToolIdentityPolicy`'s `subject-bound` variant (`src/core/types.ts`) gains two **optional** fields:
+`ToolIdentityPolicy`'s `subject-bound` variant (`src/core/types.ts`) gains three **optional** fields:
 
 - **`recordOwnershipField?: string`** — names an input field carrying a record id (HiMed:
   `idCita`). A consumer that tracks which records a subject created through its own channel may
   authorize the call by that ownership even when the identity fields do not match. It is an
   additional way to pass, never a way to skip the policy: a record the caller does not own falls
   through to the normal identity checks.
+- **`ownedResultField?: string`** — names the field carrying a record id on each item of a LIST
+  result (HiMed: `idCita` on `list_patient_appointments`). When the identity fields cannot bind, a
+  consumer may still serve the call to a subject who owns records of the provider, returning only the
+  items whose id that subject owns and withholding the rest. A patient asks "¿qué citas tengo?" and
+  sees the citas they booked here; a stranger's document yields nothing of that patient's. Same
+  ownership fact as `recordOwnershipField`, applied to what a read returns instead of what a write
+  names. (Added 2026-10-18, stacked on the first two.)
 - **`alwaysEnforce?: boolean`** — the consumer enforces this tool **regardless of the tenant's
   opt-in mode**. For data whose protection the tenant cannot waive. The consumer still serves the
   tenant's owner on their own surface (no buyer channel) — the field is about other people's data.
@@ -42,11 +49,12 @@ HiMed exposed two things that shape cannot say:
 Both live in core, not in the HiMed provider, because they are vocabulary of the identity contract
 (like `identityFields` itself): any provider holding records a caller can create, or data under a
 mandatory-protection law, uses the same words. HiMed is the first user: every patient tool sets
-`alwaysEnforce: true`, and `cancel_appointment` sets `recordOwnershipField: 'idCita'`.
+`alwaysEnforce: true`, `cancel_appointment` sets `recordOwnershipField: 'idCita'`, and
+`list_patient_appointments` sets `ownedResultField: 'idCita'`.
 
 ## Consequences
 
-- **Additive, per ADR 0001.** Both fields are optional; a consumer that ignores them sees the policy
+- **Additive, per ADR 0001.** All three fields are optional; a consumer that ignores them sees the policy
   it saw before. They travel the 0019 path (`_meta`), so no transport change.
 - **Still a declaration, not an enforcement point** (0019). The gateway does not police either
   field; the consumer (xcale-backend's identity gate) enforces. `alwaysEnforce` is a promise the
@@ -57,6 +65,12 @@ mandatory-protection law, uses the same words. HiMed is the first user: every pa
 - **Changing either on a tool changes the published menu → `schemaVersion` bump** (0001/0019). HiMed
   is bumped to `2026-10-17` for exactly this; without it a consumer's cached `tools/list` keeps the
   old policy and stays unenforced under `off`.
+- **`ownedResultField` makes the consumer edit a result, not only gate a call.** The consumer must
+  filter the data the model sees AND anything derived from it (a rendered card), and must not let an
+  error tied to the arguments (e.g. "patient not found") reach the model, or the filtered read would
+  still say whether a document belongs to a patient. Errors that do not depend on the arguments
+  (provider down, rate-limited, reconnect) pass through. A subject that owns no record of the
+  provider is refused before the provider is called.
 - **This crosses the Provider Self-Containment boundary** (a `src/core` change in a provider PR),
   hence Mateo's explicit call.
 

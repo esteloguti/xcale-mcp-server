@@ -516,7 +516,10 @@ export function buildHimedTools(
     description:
       "List a patient's appointments (also the primitive the reminder verifier re-reads).",
     credentialGroup: 'autoagendamiento',
-    identityPolicy: actsOnPatient('idPaciente'),
+    // Each result item carries its `idCita` (`[{ idCita, textoCita }]`), so a patient who has not been
+    // verified still sees the citas THEY booked through this channel (the consumer filters the list to
+    // owned records); everything else on that cédula stays withheld until Tier 2.
+    identityPolicy: { ...actsOnPatient('idPaciente'), ownedResultField: 'idCita' },
     input: z
       .object({
         idPaciente: z.string().min(4).max(20),

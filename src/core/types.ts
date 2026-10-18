@@ -39,6 +39,15 @@ export type ToolIdentityPolicy =
        */
       readonly recordOwnershipField?: string;
       /**
+       * Optional. Names the field carrying a RECORD id on each item of the tool's LIST result (an
+       * appointment list's `idCita`). A consumer that cannot bind the identity fields may still serve
+       * the call to a subject who owns records of this provider, returning ONLY the items whose id that
+       * subject owns and withholding the rest — so a patient can see the appointments they booked
+       * without being pre-verified, and a stranger's document returns nothing of theirs. Platform
+       * capability of the identity contract, not provider-specific.
+       */
+      readonly ownedResultField?: string;
+      /**
        * Optional. When true, the consumer enforces this tool REGARDLESS of a tenant's opt-in identity
        * mode — protection the tenant cannot switch off. For data whose confidentiality is not the
        * tenant's to waive (a clinic's patient records under Ley 1581). Platform capability of the
