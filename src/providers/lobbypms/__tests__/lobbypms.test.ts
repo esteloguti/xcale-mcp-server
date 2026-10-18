@@ -126,17 +126,19 @@ describe('lobbypms provider — catalog surface', () => {
     expect(p.listTools().map((t) => t.name)).toContain('mcp_lobbypms_list_room_types');
   });
 
-  it('shows the agent only the money-free reads; every other tool is backend-only', () => {
+  it('publishes the reads, prices included; guest data and writes are routable only', () => {
+    // Mateo, 2026-10-17 (#147): a hotel's agent may read its PMS's prices. The consumer's own quote
+    // stays the recommended path, never the only one.
     const p = createLobbypmsProvider();
     const menu = p.listTools().map((t) => t.name);
     expect(menu.sort()).toEqual([
       'mcp_lobbypms_check_availability',
+      'mcp_lobbypms_get_availability_rates',
       'mcp_lobbypms_list_room_types',
     ]);
 
     const routable = p.routableToolNames();
     for (const name of [
-      'get_availability_rates',
       'list_rate_plans',
       'list_channels',
       'list_document_types',
@@ -179,7 +181,7 @@ describe('lobbypms provider — requests', () => {
     expect(new URL(calls[0]!.url).searchParams.get('page')).toBe('2');
   });
 
-  it('check_availability strips prices but keeps counts, plans and restrictions', async () => {
+  it('check_availability returns the availability verbatim, prices included', async () => {
     const { p, calls } = provider(AVAILABILITY_V2);
     const result = await p.callTool(
       'mcp_lobbypms_check_availability',
@@ -187,27 +189,7 @@ describe('lobbypms provider — requests', () => {
       CTX,
     );
 
-    expect(data(result)).toEqual({
-      data: [
-        {
-          date: '2026-11-12',
-          categories: [
-            {
-              category_id: 2523,
-              name: 'King',
-              available_rooms: 3,
-              plans: [
-                { id: null, name: 'STANDARD_RATE' },
-                { id: 1, name: 'Full pack' },
-              ],
-              restrictions: { min_stay: 0, max_stay: 0, lead_days: 0 },
-            },
-          ],
-        },
-      ],
-      meta: AVAILABILITY_V2.meta,
-    });
-    expect(JSON.stringify(data(result))).not.toContain('price');
+    expect(data(result)).toEqual(AVAILABILITY_V2);
     const url = new URL(calls[0]!.url);
     expect(url.pathname).toBe('/api/v2/available-rooms');
     expect(url.searchParams.get('start_date')).toBe('2026-11-12');

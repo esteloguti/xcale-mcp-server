@@ -3,9 +3,9 @@ import type { ProviderManifest } from '../../core/provider-port';
 export const SLUG = 'lobbypms';
 
 /**
- * LobbyPMS — a hotel PMS widely used in Colombia. The agent's menu holds the money-free catalog
- * reads (room types, availability without prices); everything that carries money, guest data or a
- * write is backend-only (`controlPlane`, ADR 0013). See `docs/design/lobbypms-provider/`.
+ * LobbyPMS — a hotel PMS widely used in Colombia. The agent's menu holds the catalog reads (room
+ * types, availability with its prices — design note D4); guest data and writes are routable only
+ * (`controlPlane`, ADR 0013). See `docs/design/lobbypms-provider/`.
  *
  * `connectionProbe`: `list_room_types` — a cheap no-argument read that proves the pasted token is
  * real, the property's API access is on, AND this server's egress IP is authorized in the property

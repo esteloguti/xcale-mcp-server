@@ -1,6 +1,6 @@
 # Ship Log — lobbypms-provider
 
-- **Status:** on-dev
+- **Status:** in review — PR #147, not merged
 - **Released to prod:** not yet
 - **Related:** design-notes.md · matesjara/xcale-backend#1052 (epic), #1610 (egress IPs), #1611 (booking adapter)
 - **Consumer:** matesjara/xcale-backend `feat/lobbypms-booking` — release this repo FIRST: the backend discovers

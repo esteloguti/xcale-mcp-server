@@ -40,52 +40,14 @@ function stayWindow<T extends z.ZodRawShape>(shape: T) {
     });
 }
 
-/** One availability row as `GET v2/available-rooms` returns it. */
-interface AvailabilityDay {
-  readonly date?: unknown;
-  readonly categories?: ReadonlyArray<{
-    readonly category_id?: unknown;
-    readonly name?: unknown;
-    readonly available_rooms?: unknown;
-    readonly plans?: ReadonlyArray<{ readonly id?: unknown; readonly name?: unknown }>;
-    readonly restrictions?: unknown;
-  }>;
-}
-
 /**
- * The money-free projection of the availability read: each day keeps its categories' id, name,
- * count, restrictions and the rate plans on sale (`id`, `name`), and loses every `prices` array. A
- * documented projection of fields, never a rename — the agent can see what is free and which plans it
- * can offer without ever seeing a raw price it might narrate as a quote (the backend composes quotes
- * from `get_availability_rates`).
- */
-export function withoutPrices(data: unknown): unknown {
-  const body = data as { data?: ReadonlyArray<AvailabilityDay>; meta?: unknown } | null;
-  if (!body || !Array.isArray(body.data)) return data;
-  const days: ReadonlyArray<AvailabilityDay> = body.data;
-  return {
-    data: days.map((day) => ({
-      date: day.date,
-      categories: (day.categories ?? []).map((c) => ({
-        category_id: c.category_id,
-        name: c.name,
-        available_rooms: c.available_rooms,
-        ...(Array.isArray(c.plans)
-          ? { plans: c.plans.map((plan) => ({ id: plan.id, name: plan.name })) }
-          : {}),
-        restrictions: c.restrictions,
-      })),
-    })),
-    ...(body.meta !== undefined ? { meta: body.meta } : {}),
-  };
-}
-
-/**
- * The curated LobbyPMS menu. Payloads are VERBATIM (Fidelity over Unification) except the one
- * documented projection above. The property is the token's — no tool takes a property argument.
+ * The curated LobbyPMS menu. Payloads are VERBATIM (Fidelity over Unification). The property is the
+ * token's — no tool takes a property argument.
  *
- * The agent's menu: `list_room_types`, `check_availability`. Everything with money, guest data or a
- * write is `controlPlane` (ADR 0013): routable by the consumer, withdrawn from `tools/list`.
+ * The agent's menu: `list_room_types`, `check_availability`, `get_availability_rates` — prices
+ * included (Mateo, 2026-10-17, #147: a hotel's agent may read its PMS's prices; filtering what the
+ * credential allows is not this server's decision). Guest data and writes are `controlPlane`
+ * (ADR 0013): routable by the consumer, withdrawn from `tools/list`.
  *
  * Not exposed (curated out): rooms/status, occupancy and daily-occupancy (front-office statistics),
  * products and add-product-service (upsells — no consumer flow yet). LobbyPMS has NO endpoint to
@@ -113,32 +75,30 @@ export function buildLobbypmsTools(
     tool({
       name: `mcp_${SLUG}_check_availability`,
       description:
-        'Check which room types are free at the connected LobbyPMS property, night by night, for a ' +
-        'stay window (`start_date`, `end_date`, YYYY-MM-DD; optional `category_id`). Returns ' +
-        '`data[]` — one entry per date with `categories[]`: `{ category_id, name, available_rooms, ' +
-        'plans: [{ id, name }], restrictions: { min_stay, max_stay, lead_days } }`. `plans` are the ' +
-        'rate plans on sale that night; the standard rate is `{ id: null, name: "STANDARD_RATE" }`. ' +
-        'Does NOT return prices: quote through the booking flow. Paginated (`meta`, `page`, ' +
-        '`paginate` up to 50).',
+        'Check which room types are free at the connected LobbyPMS property, night by night, and at ' +
+        'what price, for a stay window (`start_date`, `end_date`, YYYY-MM-DD; optional ' +
+        '`category_id`). Returns `data[]` — one entry per date with `categories[]`: `{ category_id, ' +
+        'name, available_rooms, plans: [{ id, name, prices: [{ people, value }] }], restrictions: ' +
+        '{ min_stay, max_stay, lead_days } }`. `plans` are the rate plans on sale that night; the ' +
+        'standard rate is `{ id: null, name: "STANDARD_RATE" }`. `value` is the price per night for ' +
+        "that number of people, in the property's currency; the payload does not say whether it " +
+        'includes taxes. Paginated (`meta`, `page`, `paginate` up to 50).',
       input: stayWindow({ category_id: id.optional(), page, paginate }),
-      handler: async (args, ctx) => {
-        const outcome = unwrapLobby(
+      handler: async (args, ctx) =>
+        unwrapLobby(
           await client.get('v2/available-rooms', ctx.request, args),
           'check availability',
-        );
-        return outcome.ok ? { ...outcome, data: withoutPrices(outcome.data) } : outcome;
-      },
+        ),
     }),
     tool({
-      // BACKEND-ONLY (the money guard): the only read that returns prices. The consumer composes
-      // the quote from it; off the menu, the agent can never narrate a raw price.
+      // The same read as `check_availability`, under the name consumers already route to.
       name: `mcp_${SLUG}_get_availability_rates`,
       description:
-        'BACKEND-ONLY. Availability, prices and restrictions per night and room type for a stay ' +
-        'window, verbatim from `GET v2/available-rooms`: `data[]` per date → `categories[]` with ' +
-        '`available_rooms`, `plans[]` (`{ id, name, prices: [{ people, value }] }`; the standard rate ' +
-        'is the plan named `STANDARD_RATE`, `id: null`) and `restrictions`. Paginated.',
-      controlPlane: true,
+        'Availability, prices and restrictions per night and room type for a stay window, verbatim ' +
+        'from `GET v2/available-rooms` — the same payload as `check_availability`: `data[]` per date ' +
+        '→ `categories[]` with `available_rooms`, `plans[]` (`{ id, name, prices: [{ people, value ' +
+        '}] }`; the standard rate is the plan named `STANDARD_RATE`, `id: null`) and `restrictions`. ' +
+        'Paginated.',
       input: stayWindow({ category_id: id.optional(), page, paginate }),
       handler: async (args, ctx) =>
         unwrapLobby(
