@@ -98,7 +98,7 @@ Discovers the provider in the catalog, connects it without a secret, calls its t
 
 - `none` auth variant in the core (separate PR, ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md)).
 - `profitroom` provider in `src/providers/profitroom/` with `contextSchema` `{ bookingEngineUrl }`, strictly parsed.
-- Five agent-facing tools, named like Erbon's: `get_hotel`, `list_room_types`, `list_rates`, `get_availability_calendar`, `check_availability`. **None returns money.**
+- Five money-free tools, named like Erbon's: `get_hotel`, `list_room_types`, `list_rates`, `get_availability_calendar`, `check_availability`. **None returns money.**
 - `check_availability` joins live proposals with room and rate names, inclusions, cancellation and deposit terms, and remaining rooms — no price.
 - One price tool, `get_stay_prices`: the same proposals **with** price, original price, `taxesIncluded` and a per-proposal `bookingUrl`. The consumer turns it into a `StayQuote`. Built as backend-only (`controlPlane`, the money guard); **published to the agent since Mateo, 2026-10-17, xcale-mcp-server#149** — a hotel's agent may read its prices; the consumer's quote stays the recommended way.
 - In-memory cache (15 min) for `details`, `rooms`, `offers`; never for `availability`.
