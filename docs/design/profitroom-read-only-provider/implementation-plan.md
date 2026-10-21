@@ -216,7 +216,7 @@ Consumer: xcale-backend #1624 (the agent sends the cabins' photos on WhatsApp wi
 | M3 drift probe checks one gallery photo      | 3 tests red (`photo` check missing)     | `checkPhoto` derives the URL with the provider's own `photosOf`: 404 or a non-image/GIF → drift; 5xx or no answer → unreachable. Live run: all six checks `ok`                |
 
 - [x] `npm run typecheck` clean; provider + scripts tests 97 green
-- [x] Tool description names `photos[].url`; contract `Room.photos` (derived); `providerVersion` 0.3.0 (`schemaVersion` stays `2026-10-15`: the 0.2.0 shape never shipped)
+- [x] Tool description names `photos[].url`; contract `Room.photos` (derived); `providerVersion` 0.3.0 (`schemaVersion` stays #144's `2026-10-17`: #144 and #146 ship in one release, so the 0.2.0 shape never ships alone)
 
 **Review fixes (pr-reviewer, 2026-10-15):**
 
