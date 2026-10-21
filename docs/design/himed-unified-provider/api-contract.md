@@ -136,7 +136,7 @@ All tool names collapse to the `mcp_himed_*` namespace. Wire values are sandbox-
 | `mcp_himed_list_appointment_types` | autoagendamiento | scheduling | `accion: listarTiposCitas` | |
 | `mcp_himed_get_availability` | autoagendamiento | scheduling | `accion: consultarDisponibilidad` | professional = **`idEspecialista`** |
 | `mcp_himed_create_appointment` | autoagendamiento | scheduling | `accion: CrearCita` | result returns `idCita` only |
-| `mcp_himed_list_patient_appointments` | autoagendamiento | scheduling | `accion: citasPaciente` | `forma: 'texto'`; identityPolicy subject-scoped |
+| `mcp_himed_list_patient_appointments` | autoagendamiento | scheduling | `accion: citasPaciente` | `forma: 'texto'`; identityPolicy subject-bound on `idPaciente`, `alwaysEnforce`, `ownedResultField: 'idCita'` |
 | `mcp_himed_cancel_appointment` | autoagendamiento | scheduling | `accion: cancelarCita` | **requires `idPaciente`** |
 
 **Name collision to resolve:** `himed-directory` and `himed-scheduling` both had a `list_locations`

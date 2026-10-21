@@ -64,9 +64,10 @@ mandatory-protection law, uses the same words. HiMed is the first user: every pa
 - **A consumer that ignores `alwaysEnforce` under-protects.** The field cannot force an unaware
   consumer; it makes the requirement explicit and machine-readable, which is the most a declaration
   can do. Our consumer honors it (xcale-backend#1442).
-- **Changing either on a tool changes the published menu → `schemaVersion` bump** (0001/0019). HiMed
-  is bumped to `2026-10-17` for exactly this; without it a consumer's cached `tools/list` keeps the
-  old policy and stays unenforced under `off`.
+- **Changing any of them on a tool changes the published menu → `schemaVersion` bump** (0001/0019).
+  HiMed is bumped to `2026-10-18` (`providerVersion` `0.6.0`) for exactly this — `2026-10-17` for
+  `recordOwnershipField`/`alwaysEnforce`, then `2026-10-18` when `ownedResultField` was added; without
+  the bump a consumer's cached `tools/list` keeps the old policy and stays unenforced under `off`.
 - **`ownedResultField` makes the consumer edit a result, not only gate a call.** The consumer must
   filter the data the model sees AND anything derived from it (a rendered card), and must not let an
   error tied to the arguments (e.g. "patient not found") reach the model, or the filtered read would
