@@ -64,7 +64,7 @@ const stayInput = z
   });
 
 /**
- * The Profitroom menu (contract §C.1): money-free reads over the hotel's public booking engine. The
+ * The Profitroom tools (contract §C.1): read-only access to the hotel's public booking engine. The
  * hotel comes from the call context (`bookingEngineUrl`), never from a tool argument. Every tool is
  * guest-safe (`audience: 'customer'`) and read-only.
  */

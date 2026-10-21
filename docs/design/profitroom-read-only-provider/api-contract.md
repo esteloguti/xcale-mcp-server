@@ -204,7 +204,7 @@ The parsed URL is **never** fetched. A failing refine is rejected by the core's 
 
 ## C. MCP tool contract
 
-All tools via `tool({...})` with zod `input` as the single source of truth. `hotelKey` comes from context, never from tool input. All five menu tools are `readOnly: true`, `audience: 'customer'`.
+All tools via `tool({...})` with zod `input` as the single source of truth. `hotelKey` comes from context, never from tool input. All six tools are `readOnly: true`, `audience: 'customer'`.
 
 ### Common inputs
 

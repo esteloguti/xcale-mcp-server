@@ -32,7 +32,7 @@ export interface StayScope {
 /**
  * The shared pipeline behind `check_availability` and `get_stay_prices` (contract §C.4): ask the engine
  * for live proposals, then nest the room, offer and payment profile each one names. Money never leaves
- * here unless the caller is the backend-only price tool.
+ * here unless the caller is `get_stay_prices`.
  */
 export async function runStay(
   client: ProfitroomClient,
