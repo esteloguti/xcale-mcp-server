@@ -1,6 +1,6 @@
 # Profitroom Read-Only Provider (v1) — Feature Design
 
-> **Feature**: Onboard Profitroom as a credential-less MCP provider (`none` auth), read-only, with 5 tools over a hotel's public booking engine: hotel info, room types, rates, availability calendar, and a priced quote with a pre-filled booking link.
+> **Feature**: Onboard Profitroom as a credential-less MCP provider (`none` auth), read-only, with 6 tools over a hotel's public booking engine: hotel info, room types, rates, availability calendar, availability check, and a priced quote with a pre-filled booking link.
 > **Priority**: P1 High
 > **Owner**: Sara
 > **Status**: Draft
@@ -98,7 +98,7 @@ Discovers the provider in the catalog, connects it without a secret, calls its t
 
 - `none` auth variant in the core (separate PR, ADR [credential-less-provider-auth](../../adr/0022-credential-less-provider-auth.md)).
 - `profitroom` provider in `src/providers/profitroom/` with `contextSchema` `{ bookingEngineUrl }`, strictly parsed.
-- Five agent-facing tools, named like Erbon's: `get_hotel`, `list_room_types`, `list_rates`, `get_availability_calendar`, `check_availability`. **None returns money.**
+- Five money-free tools, named like Erbon's: `get_hotel`, `list_room_types`, `list_rates`, `get_availability_calendar`, `check_availability`. **None returns money.**
 - `check_availability` joins live proposals with room and rate names, inclusions, cancellation and deposit terms, and remaining rooms — no price.
 - One price tool, `get_stay_prices`: the same proposals **with** price, original price, `taxesIncluded` and a per-proposal `bookingUrl`. The consumer turns it into a `StayQuote`. Built as backend-only (`controlPlane`, the money guard); **published to the agent since Mateo, 2026-10-17, xcale-mcp-server#149** — a hotel's agent may read its prices; the consumer's quote stays the recommended way.
 - In-memory cache (15 min) for `details`, `rooms`, `offers`; never for `availability`.
@@ -215,7 +215,7 @@ Verified live: dates, adults, children (`r1_child0-2=1` → "2 adultos • 1 ni�
 | 13  | Drift detection                          | Fixtures in CI + daily `profitroom-drift.yml` (cron + manual) on `hotellapausa`, +30 days, 2 nights, 2 adults; failure opens/updates an issue                                                                                                                                                             | Detects change without making every PR depend on Profitroom                                                                                                                                                   |
 | 14  | Calendar range                           | Max 60 days per call                                                                                                                                                                                                                                                                                      | Bounds payload and upstream load                                                                                                                                                                              |
 | 15  | Currency                                 | The hotel's `defaultCurrency`; no conversion                                                                                                                                                                                                                                                              | Matches what the guest pays in the engine                                                                                                                                                                     |
-| 16  | Tool metadata                            | All five tools `readOnly`; audience `customer` per the (Proposed) audience ADR                                                                                                                                                                                                                            | Guest-safe reads                                                                                                                                                                                              |
+| 16  | Tool metadata                            | All six tools `readOnly`; audience `customer` per the audience ADR (Rejected 2026-10-15, marks are inert metadata until xcale-backend#1614 decides)                                                                                                                                                       | Guest-safe reads                                                                                                                                                                                              |
 
 ### Agent Tools
 
