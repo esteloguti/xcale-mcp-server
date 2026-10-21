@@ -4,6 +4,7 @@ import { echoProvider } from './echo';
 import { erbonProvider } from './erbon';
 import { profitroomProvider } from './profitroom';
 import { siigoProvider } from './siigo';
+import { lobbypmsProvider } from './lobbypms';
 import { toteatProvider } from './toteat';
 import { woocommerceProvider } from './woocommerce';
 
@@ -18,6 +19,7 @@ export const PROVIDERS: readonly IProvider[] = [
   echoProvider,
   cloudbedsProvider,
   erbonProvider,
+  lobbypmsProvider,
   toteatProvider,
   siigoProvider,
   woocommerceProvider,
