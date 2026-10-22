@@ -2,7 +2,8 @@
 
 - **Status:** Accepted (2026-10-17, by Mateo on the review of #125: `recordOwnershipField` and the
   non-switchable `alwaysEnforce`, as the law). `ownedResultField` was added on 2026-10-18, after that
-  acceptance — it applies the same ownership fact to a read, and is up for his re-read on #125
+  acceptance — it applies the same ownership fact to a read, and was **accepted by Mateo on 2026-10-21**
+  ("sí, apruebo") on the #125 `/pr-review`. All three fields are accepted.
 - **Date:** 2026-10-17
 - **Decision makers:** Sara (HiMed owner); Mateo (release owner — signed off the `src/core` change and
   the mandatory patient-data protection on 2026-10-17)
