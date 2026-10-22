@@ -38,7 +38,7 @@ No tools yet. A1 builds the four pieces every tool in A2 stands on, so A2 only a
 - **Status → code comes from the core** (`mapHttpStatusToErrorCode`, `src/core/http.ts`), identical for every provider. The contract listed `404` as `PROVIDER_INVALID_INPUT`; the core maps it to `PROVIDER_ERROR`, and the core's policy wins ("share policies, not assumptions"). The contract table is corrected.
 - **`res.body` is never read.** The core already trims and query-redacts it, but Wompi's JSON error repeats the key in a field (`reason`), which query redaction does not touch.
 
-### Finding that blocks A2: Wompi deactivates links only with `PATCH`
+### Finding: Wompi deactivates links only with `PATCH` — resolved in this branch
 
 The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`, `HttpMethod`). Verified on 2026-10-22 against the sandbox:
 
@@ -47,4 +47,10 @@ The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`
 | `PATCH /payment_links/{id}` `{ "active": false }` | `200`, `active: false` (spike)   |
 | `PUT /payment_links/{id}` `{ "active": false }`   | `404` — the route does not exist |
 
-So `mcp_wompi_deactivate_payment_link` needs `PATCH` in the core's `HttpMethod`. That is a change to `src/core`, outside Provider Self-Containment. Precedent: `DELETE` was added the same way for Cloudbeds' webhook management ("a generic HTTP capability, not provider knowledge"). It ships as **its own small PR ahead of A2**, the way Profitroom's `none` auth did, and goes to Mateo's review. A1 does not need it.
+So `mcp_wompi_deactivate_payment_link` needs `PATCH` in the core's `HttpMethod` — a change to `src/core`, outside Provider Self-Containment.
+
+**How it ships (decided 2026-10-22):** in this branch, as **its own commit** (`470d1a0 feat(core): transport PATCH`), not a separate PR. Precedent: `DELETE` entered the core exactly this way, inside the Cloudbeds commit that needed it (`7b7a3bc`, "a generic HTTP verb the core already transports for every provider, not provider knowledge… argued in place"). A separate PR would have forced this branch to wait for its merge (no stacked PRs). The materializer (`authentication-materializer.ts:78`) and the transport (`http.ts:77`) pass the method through untouched, so the verb and its doc comment are the whole change.
+
+- [x] Core: `PATCH` in `HttpMethod` (`470d1a0`).
+- [x] Client: `patch()` — red → green → refactor (`post` and `patch` now share one JSON sender) (`fe7d162`). 2 tests; suite 653/653; `tsc` clean.
+- [ ] **PR body must carry a "Touches the core" section**: the one-line change, the sandbox evidence (`PUT` 404 / `PATCH` 200), the `DELETE` precedent, and that it is isolated in `470d1a0` for review. The template's forbidden box is ticked with that justification (same as `7b7a3bc`, which had no separate ADR).
