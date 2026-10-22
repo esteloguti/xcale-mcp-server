@@ -99,7 +99,10 @@ The consumer can create a single-use link, deactivate it and list its transactio
 - [ ] Tools, all `controlPlane: true` (D-3): `mcp_wompi_check_credentials`, `mcp_wompi_create_payment_link`, `mcp_wompi_deactivate_payment_link`, `mcp_wompi_list_transactions`.
 - [ ] Error mapping to `ProviderErrorCode` with own messages; never echo Wompi bodies (D-5).
 - [ ] Transactions trimmed to settlement fields (D-7).
-- [ ] Fixtures from the sandbox spike (no keys, no personal data) and tests.
+- [ ] Listing pagination with a hard cap: at most 50 pages (10,000 transactions) per call; beyond it, `PROVIDER_ERROR` ("window too large") so the consumer narrows the window instead of the provider looping unbounded.
+- [ ] No `identityPolicy` on any tool: none returns or changes a person's records (payer data is dropped, D-7), which is what an absent policy declares (ADR 0019). No `audience` either: it classifies published tools, and these are all `controlPlane`.
+- [ ] Fixtures from the sandbox spike (no keys, no personal data) and tests, including the conformance round trip (`tools/list` / `tools/call`, with the auth-failure path).
+- [ ] Logo `assets/wompi.svg` (or `.webp`).
 
 ### 🟡 Should Have
 
@@ -115,6 +118,17 @@ The consumer can create a single-use link, deactivate it and list its transactio
 - **Multi-credential groups** — one secret is enough (D-1).
 
 ---
+
+### Consumer registration data (asked for in matesjara/xcale-backend#1861)
+
+Provider Self-Containment keeps the consumer's side to registration data. xcale-backend needs:
+
+| Data                   | Value                                                                                                | Where in the consumer                                                        |
+| :--------------------- | :--------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| Toolbox entry          | `slug: 'wompi'`, the MCP server URL, `accountKeyFields: ['publicKey']`                               | `mcpToolboxes` (`xcale-backend/src/modules/mcp/toolboxes.ts`, like `toteat`) |
+| Context it must send   | `publicKey` (asked in the connect form) and `environment` (derived from the key prefixes, not asked) | The consumer's gateway connect extension (its own design)                    |
+| Tools it calls by name | the four `mcp_wompi_*` tools                                                                         | The consumer's Wompi gateway adapter                                         |
+| Errors it must handle  | `PROVIDER_AUTH_EXPIRED` → treat the credential as rejected; the rest per contract §2                 | Same adapter                                                                 |
 
 ## 6. UX & Interaction Design
 
@@ -165,12 +179,13 @@ Consumer ──callTool(token = private key, metadata = { publicKey, environment
 
 ### Risks
 
-| #   | Risk                                                                   | Likelihood        | Impact | Mitigation                                                                                     |
-| :-- | :--------------------------------------------------------------------- | :---------------- | :----- | :--------------------------------------------------------------------------------------------- |
-| R-1 | A Wompi error body leaks a tenant's private key into a result or a log | High if unguarded | High   | AD-5; a test feeds an error body containing a key and asserts it never appears in the outcome. |
-| R-2 | Production behaves differently from sandbox                            | Low               | Medium | Same API documented; first production connection is watched; fixtures cover the shapes.        |
-| R-3 | A busy merchant has many transactions per day and the listing is slow  | Medium            | Low    | Consumer passes a tight window (oldest pending charge); page size 200.                         |
-| R-4 | Wompi changes the listing API or starts honouring the link filter      | Low               | Low    | Filtering stays on the consumer side; extra results are harmless.                              |
+| #   | Risk                                                                   | Likelihood        | Impact | Mitigation                                                                                                                                                              |
+| :-- | :--------------------------------------------------------------------- | :---------------- | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| R-0 | The consumer forgets to send `environment` and every call fails        | Medium            | Medium | The provider fails closed with an explicit message (`Wompi call needs the connection environment`), never a silent default; listed as consumer registration data above. |
+| R-1 | A Wompi error body leaks a tenant's private key into a result or a log | High if unguarded | High   | AD-5; a test feeds an error body containing a key and asserts it never appears in the outcome.                                                                          |
+| R-2 | Production behaves differently from sandbox                            | Low               | Medium | Same API documented; first production connection is watched; fixtures cover the shapes.                                                                                 |
+| R-3 | A busy merchant has many transactions per day and the listing is slow  | Medium            | Low    | Consumer passes a tight window (oldest pending charge); page size 200.                                                                                                  |
+| R-4 | Wompi changes the listing API or starts honouring the link filter      | Low               | Low    | Filtering stays on the consumer side; extra results are harmless.                                                                                                       |
 
 ### Open Questions
 

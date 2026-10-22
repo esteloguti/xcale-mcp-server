@@ -102,7 +102,7 @@ z.object({
 }).strict();
 ```
 
-Wompi call: `GET /transactions?from_date=<fromDate>&until_date=<untilDate>&page=<n>&page_size=200`, repeated with `page=n+1` until `n * 200 >= meta.total_results`.
+Wompi call: `GET /transactions?from_date=<fromDate>&until_date=<untilDate>&page=<n>&page_size=200`, repeated with `page=n+1` until `n * 200 >= meta.total_results`, **at most 50 pages** (10,000 transactions). If the window holds more, the tool returns `PROVIDER_ERROR` (`Wompi transaction window too large; narrow fromDate/untilDate`) instead of a partial list, so the consumer never settles from an incomplete page. `untilDate` must be after `fromDate` (`PROVIDER_INVALID_INPUT` otherwise, no call).
 
 Success → `ok({ transactions: WompiTransaction[] })`:
 
@@ -133,6 +133,7 @@ Codes are the core's `ProviderErrorCode` (`src/core/errors.ts:6-15`). No new cod
 | `429`                                            | `PROVIDER_RATE_LIMITED`  | `Wompi <operation> failed (HTTP 429)`                                   |
 | `5xx`, timeout, network                          | `PROVIDER_UNAVAILABLE`   | `Wompi <operation> failed (HTTP 5xx)` / `Wompi <operation> unreachable` |
 | `2xx` with an unexpected shape                   | `PROVIDER_ERROR`         | `Wompi <operation> returned an unexpected response`                     |
+| Listing window over 50 pages                     | `PROVIDER_ERROR`         | `Wompi transaction window too large; narrow fromDate/untilDate`         |
 | `environment` missing                            | `PROVIDER_INVALID_INPUT` | `Wompi call needs the connection environment`                           |
 
 **Redaction rule (binding).** Wompi's error bodies repeat the key they received (observed: `"…se recibió: prv_test_…"`). The provider **never** puts a Wompi response body, `reason` or `messages` into a tool outcome, an error message or a log line. A test asserts it.

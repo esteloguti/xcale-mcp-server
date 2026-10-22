@@ -1,7 +1,7 @@
 # Wompi Provider — Implementation Plan
 
 > **Inputs**: [`feature-design.md`](./feature-design.md) · [`api-contract.md`](./api-contract.md) · [`grill-notes.md`](./grill-notes.md) · [`sandbox-evidence.md`](./sandbox-evidence.md)
-> **Issue**: matesjara/xcale-mcp-server#159 · **Branch**: `feat/159-wompi-provider` (from `dev` @ `55f2cba`)
+> **Issue**: matesjara/xcale-mcp-server#159 · **Docs branch**: `docs/159-wompi-provider` · **Build branch**: `feat/159-wompi-provider` (from `dev` @ `55f2cba`, created when the build starts)
 > **Status**: Draft · **Last updated**: 2026-10-22
 >
 > Symbols and intent, **no bodies**. Every change to an existing file is anchored to a real `file:line` on `dev` @ `55f2cba`.
@@ -42,8 +42,8 @@ src/providers/
     ├── __fixtures__/                # NEW — api-contract §3
     └── __tests__/
         ├── errors.test.ts           # NEW — mapping + redaction
-        └── wompi.test.ts            # NEW — tools against fakeFetch
-assets/wompi.(svg|png)               # NEW — logo, if the catalog needs one
+        └── wompi.test.ts            # NEW — tools against fakeFetch + conformance round trip
+assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR template allows only these)
 ```
 
 ## Anchors (existing code read on `dev` @ `55f2cba`)
@@ -87,6 +87,36 @@ assets/wompi.(svg|png)               # NEW — logo, if the catalog needs one
 - [ ] A1
 - [ ] A2
 
+### Test order (one red → green at a time)
+
+**A1 — `errors.test.ts`, `client` cases**
+
+1. `401` with `INVALID_ACCESS_TOKEN` → `PROVIDER_AUTH_EXPIRED`, message `Wompi <op> failed (HTTP 401)`.
+2. **Redaction:** a `401` whose `reason` carries `prv_test_FAKEKEY` → neither the outcome nor the message contains it.
+3. `422` (`INPUT_VALIDATION_ERROR`, and `UNPROCESSABLE` below the minimum) → `PROVIDER_INVALID_INPUT`, and the Spanish `reason` is not propagated.
+4. `429` → `PROVIDER_RATE_LIMITED`; `5xx` and a network failure → `PROVIDER_UNAVAILABLE`.
+5. A `2xx` with an unexpected shape → `PROVIDER_ERROR`.
+6. Base URL: `environment: 'sandbox'` → `sandbox.wompi.co/v1`, `'production'` → `production.wompi.co/v1`; missing → `PROVIDER_INVALID_INPUT` and **no fetch**.
+
+**A2 — `wompi.test.ts`**
+
+1. `mcp_wompi_check_credentials` → `GET /transactions?reference=xcale-connection-probe` with `Authorization: Bearer …`; `200 []` → `ok({ valid: true })`; `401` → `PROVIDER_AUTH_EXPIRED`.
+2. `mcp_wompi_create_payment_link` → `POST /payment_links` with the exact body of contract §1.2 (`single_use: true`, `collect_shipping: false`); returns `linkId` and `url = https://checkout.wompi.co/l/{id}`; `description` empty → `PROVIDER_INVALID_INPUT` without a call.
+3. `mcp_wompi_deactivate_payment_link` → `PATCH /payment_links/{id}` with `{ active: false }`.
+4. `mcp_wompi_list_transactions` → date params + `page_size=200`; follows pages until `total_results`; stops with `PROVIDER_ERROR` past 50 pages; `untilDate <= fromDate` → `PROVIDER_INVALID_INPUT` without a call; drops payer fields (fixture has `customer_email`, the output has not).
+5. **Conformance round trip:** `tools/list` lists none of the four; `tools/call` by name works for each; the auth-failure path returns `isError: true` with `PROVIDER_AUTH_EXPIRED`.
+6. Registration: `wompiProvider` is in `PROVIDERS`; manifest probe and account keys as in contract §0.
+
+### PR checklist mapping (`.github/pull_request_template.md`)
+
+| Template box                                                                          | This change                                                                 |
+| :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------- |
+| Only `src/providers/{slug}/`, tests, one line in `index.ts`, logo, own docs           | Yes                                                                         |
+| `identityPolicy` on tools that touch a person's records                               | None do (payer data dropped) → absent, justified in the feature design      |
+| Consumer registration data asked in a consumer issue                                  | matesjara/xcale-backend#1861 (feature design, "Consumer registration data") |
+| No `src/core`, `src/protocol` or `src/auth`, dependencies, contracts or consumer code | Yes                                                                         |
+| No raw token persisted or logged; `reveal()` only at egress                           | Yes — the core materializes the bearer header; errors never echo bodies     |
+
 ## Test strategy
 
 - Vitest with the toteat-style `fakeFetch` (records URL, method, headers and body) and fixtures from the spike.
@@ -99,11 +129,14 @@ assets/wompi.(svg|png)               # NEW — logo, if the catalog needs one
 - [ ] A1 and A2 ticked.
 - [ ] `npm test` · `npm run typecheck` · Prettier green.
 - [ ] Redaction test present and green.
-- [ ] PR to `dev` referencing #159 and epic matesjara/xcale-backend#1070.
+- [ ] Conformance round trip (with the auth-failure path) green.
+- [ ] Logo in `assets/`.
+- [ ] PR to `dev` referencing #159 and epic matesjara/xcale-backend#1070, with the template's provider checklist filled.
 
 ## Risks
 
-| Risk                                                     | Mitigation                                                          |
-| :------------------------------------------------------- | :------------------------------------------------------------------ |
-| Key leak through a Wompi error body                      | Own messages only; dedicated test.                                  |
-| The core's generated connect form asks for `environment` | It is optional in the schema (contract §0); the consumer writes it. |
+| Risk                                                     | Mitigation                                                                |
+| :------------------------------------------------------- | :------------------------------------------------------------------------ |
+| Key leak through a Wompi error body                      | Own messages only; dedicated test.                                        |
+| The core's generated connect form asks for `environment` | It is optional in the schema (contract §0); the consumer writes it.       |
+| A merchant with a huge window makes the listing loop     | Hard cap of 50 pages → `PROVIDER_ERROR`; the consumer narrows the window. |
