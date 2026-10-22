@@ -43,6 +43,7 @@ The `subject-bound` variant gains **optional** fields, published like the rest o
 |:--|:--|:--|
 | `identityFieldKinds` | `Record<string, 'phone' \| 'email' \| 'document' \| 'name'>` | The kind of each entry of `identityFields`. `phone`, `email` and `document` **identify** and bind to the person's proven identities by kind; `name` only **narrows** a search — it never binds and never refuses on its own. A field listed without a kind keeps today's meaning, so existing declarations are unaffected. |
 | `recordLookup` | `boolean` | The tool finds **a person's records** by the identifying fields. The consumer may call it on the person's behalf, filling those fields from that person's proven identities, never from the model. |
+| `recordKind` | `'reservation' \| 'appointment' \| 'order' \| 'record'` | On a `recordLookup` tool: what kind of record it returns, so the consumer can name it to the customer and in the consent prompt. Absent: `'record'`. |
 | `resultItemsPath` | `string` | Dot path to the array of records in the result. Absent: the result itself is the array. Every path below is relative to one item. |
 | `resultIdentityFields` | `Record<string, 'phone' \| 'email' \| 'document'>` | Which field on each returned item carries the person, and its kind. The consumer keeps only the items whose identity matches the person exactly (E.164 for phones), whatever the provider's filter returned. |
 | `resultRecordIdField` | `string` | The record id on each item. The consumer keeps it server-side and hands the agent an opaque handle instead. |
@@ -62,6 +63,10 @@ distinct `resultIdentityFields` values of kind `email` or `document`, the consum
 shared (a receptionist's, an agency's, a household's). No name field is needed for it. `alwaysEnforce` stays the provider's statement that the data is not the tenant's
 to leave unprotected; on the consumer that is the **health tier** of Own Records: a proven phone plus the
 patient's document to see, and a minimal default view.
+
+**The gateway's contract: an absent `identityPolicy` means the tool touches no person's records.** A tool
+that touches them without declaring is a defect of this gateway, and it is fixed here, never worked around
+in a consumer.
 
 As in 0019, these are **declarations, not enforcement points**. This server does not police them; the
 consumer enforces. **A tool that declares `recordLookup` without a `projection` and
@@ -115,8 +120,11 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
   - **HiMed**: kinds (`document` on `idPaciente`), `resultDateField`, `projection` and `projectionDetail`
     (specialty, practitioner) on its appointment list, `recordAction: 'cancel'` on `cancel_appointment`, and
     `createdRecordIdField` on `create_appointment` to replace the consumer-side observer.
-- The second-hop gaps the panel found (Nevatal `list_appointments` / `cancel_appointment`, WooCommerce
-  `get_order` / `list_orders` with no policy) are consumer-side tools in xcale-backend, not here.
+- **WooCommerce's order tools must declare before the consumer's first phase.** `mcp_woocommerce_update_order`,
+  `mcp_woocommerce_list_orders` and `mcp_woocommerce_get_order` (`src/providers/woocommerce/tools.ts:1065,1436,1454`)
+  touch customers' orders and declare no `identityPolicy` today. They are fixed by a declaration PR in this repo,
+  before xcale-backend's phase 0 (provider before consumer). Nevatal's `list_appointments` /
+  `cancel_appointment` are native tools of xcale-backend and are declared there.
 
 ## References
 
