@@ -84,12 +84,14 @@ Note: `single_use: true` does **not** stop a second payment after an approved on
 
 ### 1.3 `mcp_wompi_deactivate_payment_link`
 
-|            |                                                                                |
-| :--------- | :----------------------------------------------------------------------------- |
-| Input      | `z.object({ linkId: z.string().min(1) }).strict()`                             |
-| Wompi call | `PATCH /payment_links/{linkId}` with `{ "active": false }`                     |
-| Success    | `ok({ linkId, active: false })` (Wompi `200`, `data.active: false`)            |
-| Failure    | per §2 (`404` for an unknown link → `PROVIDER_INVALID_INPUT` **(documented)**) |
+> **Needs `PATCH` in the core (found while building A1, 2026-10-22).** The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`, `HttpMethod`), and Wompi answers `404` to `PUT /payment_links/{id}` (verified): only `PATCH` deactivates. Adding the verb is a `src/core` change, shipped as its own small PR ahead of this tool (precedent: `DELETE`, added for Cloudbeds' webhook management). See `work-log.md`.
+
+|            |                                                                          |
+| :--------- | :----------------------------------------------------------------------- |
+| Input      | `z.object({ linkId: z.string().min(1) }).strict()`                       |
+| Wompi call | `PATCH /payment_links/{linkId}` with `{ "active": false }`               |
+| Success    | `ok({ linkId, active: false })` (Wompi `200`, `data.active: false`)      |
+| Failure    | per §2 (`404` for an unknown link → `PROVIDER_ERROR`, the core's policy) |
 
 ### 1.4 `mcp_wompi_list_transactions`
 
@@ -124,12 +126,13 @@ Payer data (`customer_email`, `customer_data`, `billing_data`, `shipping_address
 
 ## 2. Errors
 
-Codes are the core's `ProviderErrorCode` (`src/core/errors.ts:6-15`). No new codes.
+Codes are the core's `ProviderErrorCode` (`src/core/errors.ts:6-15`), assigned by the core's status policy (`mapHttpStatusToErrorCode`, `src/core/http.ts`) — the same for every provider. No new codes.
 
 | Wompi                                            | Code                     | Message (own, fixed)                                                    |
 | :----------------------------------------------- | :----------------------- | :---------------------------------------------------------------------- |
 | `401` / `403` (`INVALID_ACCESS_TOKEN`, observed) | `PROVIDER_AUTH_EXPIRED`  | `Wompi <operation> failed (HTTP 401)`                                   |
-| `422` / `400` / `404`                            | `PROVIDER_INVALID_INPUT` | `Wompi <operation> failed (HTTP 422)`                                   |
+| `422` / `400`                                    | `PROVIDER_INVALID_INPUT` | `Wompi <operation> failed (HTTP 422)`                                   |
+| `404` and any other status                       | `PROVIDER_ERROR`         | `Wompi <operation> failed (HTTP 404)`                                   |
 | `429`                                            | `PROVIDER_RATE_LIMITED`  | `Wompi <operation> failed (HTTP 429)`                                   |
 | `5xx`, timeout, network                          | `PROVIDER_UNAVAILABLE`   | `Wompi <operation> failed (HTTP 5xx)` / `Wompi <operation> unreachable` |
 | `2xx` with an unexpected shape                   | `PROVIDER_ERROR`         | `Wompi <operation> returned an unexpected response`                     |
