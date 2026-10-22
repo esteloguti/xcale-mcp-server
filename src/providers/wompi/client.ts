@@ -31,6 +31,13 @@ export interface WompiClient {
     ctx: WompiContext,
     body: Readonly<Record<string, unknown>>,
   ): Promise<RequestResult>;
+  /** Wompi's partial update (deactivating a link). `PUT` on the same path is a 404. */
+  patch(
+    path: string,
+    request: AuthedRequest,
+    ctx: WompiContext,
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<RequestResult>;
 }
 
 /**
@@ -65,16 +72,25 @@ function buildUrl(baseUrl: string, path: string, params: QueryParams = {}): stri
 export function createWompiClient(deps: WompiClientDeps = {}): WompiClient {
   const baseUrls = deps.baseUrls ?? DEFAULT_BASE_URLS;
 
+  const sendJson = async (
+    method: 'POST' | 'PATCH',
+    path: string,
+    request: AuthedRequest,
+    ctx: WompiContext,
+    body: Readonly<Record<string, unknown>>,
+  ): Promise<RequestResult> =>
+    request({
+      method,
+      url: buildUrl(baseUrlFor(baseUrls, ctx), path),
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
   return {
     get: async (path, request, ctx, params) =>
       request({ method: 'GET', url: buildUrl(baseUrlFor(baseUrls, ctx), path, params) }),
 
-    post: async (path, request, ctx, body) =>
-      request({
-        method: 'POST',
-        url: buildUrl(baseUrlFor(baseUrls, ctx), path),
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-      }),
+    post: (path, request, ctx, body) => sendJson('POST', path, request, ctx, body),
+    patch: (path, request, ctx, body) => sendJson('PATCH', path, request, ctx, body),
   };
 }

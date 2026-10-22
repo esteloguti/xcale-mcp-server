@@ -86,4 +86,34 @@ describe('wompi client', () => {
     ).rejects.toBeInstanceOf(WompiEnvironmentMissing);
     expect(request).not.toHaveBeenCalled();
   });
+
+  // Wompi deactivates a link only with PATCH (PUT answers 404 — verified on the sandbox, 2026-10-22).
+  it("patches a JSON body to the connection's API", async () => {
+    const { request, specs } = recordingRequest();
+
+    await createWompiClient().patch(
+      'payment_links/test_XGd2UH',
+      request,
+      { publicKey: 'pub_test_x', environment: 'sandbox' },
+      { active: false },
+    );
+
+    expect(specs).toEqual([
+      {
+        method: 'PATCH',
+        url: 'https://sandbox.wompi.co/v1/payment_links/test_XGd2UH',
+        headers: { 'content-type': 'application/json' },
+        body: '{"active":false}',
+      },
+    ]);
+  });
+
+  it('refuses to patch when the connection has no environment', async () => {
+    const { request } = recordingRequest();
+
+    await expect(
+      createWompiClient().patch('payment_links/x', request, { publicKey: 'pub_test_x' }, {}),
+    ).rejects.toBeInstanceOf(WompiEnvironmentMissing);
+    expect(request).not.toHaveBeenCalled();
+  });
 });
