@@ -47,11 +47,19 @@ The `subject-bound` variant gains **optional** fields, published like the rest o
 | `resultIdentityFields` | `Record<string, 'phone' \| 'email' \| 'document'>` | Which field on each returned item carries the person, and its kind. The consumer keeps only the items whose identity matches the person exactly (E.164 for phones), whatever the provider's filter returned. |
 | `resultRecordIdField` | `string` | The record id on each item. The consumer keeps it server-side and hands the agent an opaque handle instead. |
 | `projection` | `string[]` | The **allowlist** of item fields that may be shown when a person sees their records. Whatever is not listed never reaches the agent on that road: not the record number, not free text. |
+| `projectionDetail` | `string[]` | Extra item fields that may be shown **only when the tenant opts in** (for health data: specialty, practitioner). Never shown by default; the health floor shows `projection` only. |
+| `resultDateField` | `string` | The date on each item that places the record in time — a stay's end, an appointment's start, an order's date — in ISO 8601. The consumer serves records found without a code only inside its recency window (the future, or the recent past), so a recycled or mistyped phone never opens old history. |
 | `createdRecordIdField` | `string` | On a tool that **creates** a record (a booking, an appointment, an order): where the new record's id is in the result, so the consumer can link it to the person who created it — ownership by construction, declared once instead of coded per provider. |
+| `recordAction` | `'cancel' \| 'change' \| 'read'` | On a **write** tool that declares `recordOwnershipField`: which action that call performs, so the consumer checks a step-up permit bound to that record and that action. |
 
 `recordOwnershipField`, `ownedResultField` and `alwaysEnforce` are reused unchanged. A write tool that
 acts on a record names its record id with `recordOwnershipField`, and the consumer resolves the opaque
-handle back to that id. `alwaysEnforce` stays the provider's statement that the data is not the tenant's
+handle back to that id. **A write tool with `recordOwnershipField` and no `recordAction` is not served on
+the Own Records road.**
+
+**A shared phone is detected from what the rows already declare.** When one phone's records carry several
+distinct `resultIdentityFields` values of kind `email` or `document`, the consumer treats that phone as
+shared (a receptionist's, an agency's, a household's). No name field is needed for it. `alwaysEnforce` stays the provider's statement that the data is not the tenant's
 to leave unprotected; on the consumer that is the **health tier** of Own Records: a proven phone plus the
 patient's document to see, and a minimal default view.
 
@@ -92,6 +100,8 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
 ### Negative
 - **Every provider must declare to join**, and each declaration is a published-menu change: a
   `schemaVersion` bump (0001/0019), or a warm consumer cache keeps the old policy.
+- **Some records cannot be placed in time.** A tool without `resultDateField` cannot serve records found
+  without a code, because the consumer cannot apply its recency window to them.
 - **The projection is upkeep.** A provider that adds a field to its result has to decide whether it
   belongs in the projection; until it does, the field is invisible on this road (fail closed, by design).
 - **`identityFieldKinds` leaves `name` in `identityFields`** for compatibility rather than moving it out.
@@ -102,8 +112,9 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
 - First adopters for v1:
   - **Cloudbeds** `search_guests`: kinds for its four fields, `recordLookup`, result identities, a
     projection.
-  - **HiMed**: kinds (`document` on `idPaciente`), plus `createdRecordIdField` on `create_appointment` to
-    replace the consumer-side observer.
+  - **HiMed**: kinds (`document` on `idPaciente`), `resultDateField`, `projection` and `projectionDetail`
+    (specialty, practitioner) on its appointment list, `recordAction: 'cancel'` on `cancel_appointment`, and
+    `createdRecordIdField` on `create_appointment` to replace the consumer-side observer.
 - The second-hop gaps the panel found (Nevatal `list_appointments` / `cancel_appointment`, WooCommerce
   `get_order` / `list_orders` with no policy) are consumer-side tools in xcale-backend, not here.
 
