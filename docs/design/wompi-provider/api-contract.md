@@ -84,7 +84,7 @@ Note: `single_use: true` does **not** stop a second payment after an approved on
 
 ### 1.3 `mcp_wompi_deactivate_payment_link`
 
-> **Needs `PATCH` in the core (found while building A1, 2026-10-22).** The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`, `HttpMethod`), and Wompi answers `404` to `PUT /payment_links/{id}` (verified): only `PATCH` deactivates. Adding the verb is a `src/core` change, shipped as its own small PR ahead of this tool (precedent: `DELETE`, added for Cloudbeds' webhook management). See `work-log.md`.
+> **Needs `PATCH` in the core (found while building A1, 2026-10-22).** The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`, `HttpMethod`), and Wompi answers `404` to `PUT /payment_links/{id}` (verified): only `PATCH` deactivates. Adding the verb is a `src/core` change. It ships in the provider's build branch as **its own commit** (`feat(core): transport PATCH`), the way `DELETE` entered the core inside the Cloudbeds commit that needed it, and the provider PR carries a "Touches the core" section. See `work-log.md`.
 
 |            |                                                                          |
 | :--------- | :----------------------------------------------------------------------- |
