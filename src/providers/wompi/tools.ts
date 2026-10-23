@@ -65,7 +65,9 @@ const MAX_PAGES = 50;
 const WompiTransaction = z.object({
   id: z.string(),
   payment_link_id: z.string().nullable(),
-  status: z.enum(['APPROVED', 'DECLINED', 'PENDING', 'ERROR', 'VOIDED']),
+  // Passed through as-is: settlement acts on `APPROVED`, and a state Wompi adds later must not make
+  // the whole window unreadable. Observed: `APPROVED`, `DECLINED`.
+  status: z.string().min(1),
   amount_in_cents: z.number().int(),
   currency: z.string(),
   created_at: z.string(),
@@ -209,7 +211,9 @@ export function buildWompiTools(
       controlPlane: true,
       handler: (args, ctx) =>
         guarded(async () => {
-          const rows: WompiTransactionRow[] = [];
+          // Keyed by id: an open window shifts while it is read, and a row pushed from one page onto the
+          // next must reach the consumer once.
+          const rows = new Map<string, WompiTransactionRow>();
           for (let page = 1; ; page++) {
             const result = unwrapWompi(
               await client.get('transactions', ctx.request, ctx.metadata, {
@@ -221,7 +225,10 @@ export function buildWompiTools(
               'list transactions',
             );
             if (!result.ok) return toOutcome(result);
-            const parsed = WompiTransactionPage.safeParse(result);
+            const parsed = WompiTransactionPage.safeParse({
+              data: result.data,
+              meta: result.meta,
+            });
             if (!parsed.success) {
               return err(
                 ProviderErrorCode.PROVIDER_ERROR,
@@ -234,11 +241,11 @@ export function buildWompiTools(
                 'Wompi transaction window too large; narrow fromDate/untilDate',
               );
             }
-            rows.push(...parsed.data.data);
+            for (const row of parsed.data.data) rows.set(row.id, row);
             if (page * PAGE_SIZE >= parsed.data.meta.total_results) break;
           }
           return ok({
-            transactions: rows.map((t) => ({
+            transactions: [...rows.values()].map((t) => ({
               id: t.id,
               paymentLinkId: t.payment_link_id,
               status: t.status,

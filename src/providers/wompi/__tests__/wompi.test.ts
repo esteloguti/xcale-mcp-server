@@ -329,6 +329,40 @@ describe('wompi provider — list transactions', () => {
     expect(calls).toHaveLength(1);
   });
 
+  // Settlement acts on APPROVED only; one row in a state Wompi adds later must not hide the others.
+  it('keeps listing when a transaction carries a status this provider does not know', async () => {
+    const page = listPage(1, 2, 2);
+    page.data[1] = { ...page.data[1]!, status: 'SOME_NEW_STATE' };
+    const { fetchImpl } = recordingFetch({ body: page });
+
+    const result = await createWompiProvider({ fetchImpl }).callTool(
+      'mcp_wompi_list_transactions',
+      WINDOW,
+      SANDBOX,
+    );
+
+    const { transactions } = successData(result) as { transactions: Array<{ status: string }> };
+    expect(transactions.map((t) => t.status)).toEqual(['APPROVED', 'SOME_NEW_STATE']);
+  });
+
+  // An open window shifts while it is read: a transaction created between two page requests pushes
+  // a row from page 1 onto page 2. The consumer must see each transaction once.
+  it('returns each transaction once when a row shifts onto the next page', async () => {
+    const first = listPage(1, 200, 201);
+    const second = { ...listPage(2, 1, 201), data: [first.data[199]!] };
+    const { fetchImpl } = recordingFetch({ body: first }, { body: second });
+
+    const result = await createWompiProvider({ fetchImpl }).callTool(
+      'mcp_wompi_list_transactions',
+      WINDOW,
+      SANDBOX,
+    );
+
+    const { transactions } = successData(result) as { transactions: Array<{ id: string }> };
+    expect(transactions).toHaveLength(200);
+    expect(new Set(transactions.map((t) => t.id)).size).toBe(200);
+  });
+
   it('refuses a window that does not move forward, without calling Wompi', async () => {
     const { fetchImpl, calls } = recordingFetch({ body: listTransactions });
     const p = createWompiProvider({ fetchImpl });
