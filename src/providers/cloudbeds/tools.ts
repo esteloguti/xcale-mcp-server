@@ -536,8 +536,10 @@ export function buildCloudbedsTools(
         'Create a reservation (booking) for the property. Requires the stay dates, the primary guest, ' +
         'and per room type the rooms/adults/children counts. Get roomTypeID and roomRateID from the ' +
         'availability/rate tools — never invent them. Booking-only: this declares a payment method but ' +
-        'captures no card and moves no money. Pass thirdPartyIdentifier to stamp your own external ' +
-        'reference so you can reconcile the booking later.',
+        'captures no card and moves no money. thirdPartyIdentifier is required: your own unique ' +
+        'reference for this booking. If the call fails or times out, the reservation may still have ' +
+        'been created — look for it with list_reservations (each reservation carries its ' +
+        'thirdPartyIdentifier) before trying again, and retry with the SAME reference, never a new one.',
       input: z
         .object({
           // Stay
@@ -587,7 +589,17 @@ export function buildCloudbedsTools(
           paymentMethod: z.enum(['cash', 'credit', 'ebanking', 'pay_pal']).default('cash'),
 
           // Consumer-supplied external reference for reconciliation (the consumer owns idempotency).
-          thirdPartyIdentifier: z.string().optional(),
+          // REQUIRED (#66) because of the abort-after-write window: the transport gives up after 15 s,
+          // and Cloudbeds may already have written the row when it does. postReservation has no
+          // idempotency key, so this stamp is the only way a caller can tell "the write failed" from
+          // "it landed and the answer was lost" — without it, a retry double-books the room.
+          thirdPartyIdentifier: z
+            .string()
+            .trim()
+            .min(1)
+            .describe(
+              'Your unique reference for this booking. Reuse the same value on any retry of it.',
+            ),
 
           // Misc
           estimatedArrivalTime: z.string().optional().describe('HH:mm 24h'),
