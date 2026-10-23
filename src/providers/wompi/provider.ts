@@ -16,7 +16,7 @@ export interface WompiProviderDeps {
 
 /**
  * Factory with DI. No deployment-level base URL: one deployment serves sandbox and production
- * tenants, so the client picks the host per call from the connection's `environment`.
+ * tenants, so the client picks the host per call from the public key's prefix (`context.ts`).
  */
 export function createWompiProvider(deps: WompiProviderDeps = {}): IProvider {
   const client = createWompiClient(deps.baseUrls ? { baseUrls: deps.baseUrls } : {});

@@ -15,7 +15,7 @@ const PRIVATE_KEY = 'prv_test_FAKEKEYFORTHEWOMPITESTS00';
 
 const SANDBOX: ProviderCallContext = {
   credential: { secret: new SecretString(PRIVATE_KEY) },
-  metadata: { publicKey: 'pub_test_FAKE', environment: 'sandbox' },
+  metadata: { publicKey: 'pub_test_FAKE' },
 };
 
 interface RecordedCall {
@@ -83,32 +83,46 @@ describe('wompi provider — credential probe', () => {
     expect(result).toMatchObject({ kind: 'error', code: ProviderErrorCode.AUTH_EXPIRED });
   });
 
-  it('refuses, without calling Wompi, a connection that carries no environment', async () => {
+  it('refuses, without calling Wompi, a public key whose prefix names no environment', async () => {
     const { fetchImpl, calls } = recordingFetch({ body: { data: [] } });
 
     const result = await createWompiProvider({ fetchImpl }).callTool(
       'mcp_wompi_check_credentials',
       {},
-      { ...SANDBOX, metadata: { publicKey: 'pub_test_FAKE' } },
+      { ...SANDBOX, metadata: { publicKey: 'pub_stg_FAKE' } },
     );
 
-    expect(result).toMatchObject({
-      kind: 'error',
-      code: ProviderErrorCode.INVALID_INPUT,
-      message: 'Wompi call needs the connection environment',
-    });
+    expect(result).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
     expect(calls).toHaveLength(0);
+  });
+
+  it('sends a production public key to the production API', async () => {
+    const { fetchImpl, calls } = recordingFetch({ body: { data: [] } });
+
+    await createWompiProvider({ fetchImpl }).callTool(
+      'mcp_wompi_check_credentials',
+      {},
+      {
+        ...SANDBOX,
+        metadata: { publicKey: 'pub_prod_FAKE' },
+      },
+    );
+
+    expect(calls[0]!.url).toBe(
+      'https://production.wompi.co/v1/transactions?reference=xcale-connection-probe',
+    );
   });
 });
 
 describe('wompi provider — catalog surface', () => {
-  it('asks the consumer for the public key only, so its connect form never asks for the environment', () => {
+  // The environment is read from the key prefix, so the connect form asks for nothing else.
+  it('asks the consumer for the public key only', () => {
     const schema = createWompiProvider().contextSchema as
       | { required?: string[]; properties?: Record<string, unknown> }
       | undefined;
 
     expect(schema?.required).toEqual(['publicKey']);
-    expect(Object.keys(schema?.properties ?? {})).toEqual(['publicKey', 'environment']);
+    expect(Object.keys(schema?.properties ?? {})).toEqual(['publicKey']);
   });
 
   it('names its probe and its account key so a consumer can validate and identify a connection', () => {

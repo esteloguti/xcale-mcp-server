@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { ProviderErrorCode } from '../../core/errors';
 import { err, ok, type ToolDefinition, type ToolOutcome, toolFactory } from '../../core/tool';
-import { WompiEnvironmentMissing, type WompiClient } from './client';
+import type { WompiClient } from './client';
 import type { WompiContext } from './context';
 import { unwrapWompi } from './errors';
 import { SLUG } from './manifest';
@@ -89,20 +89,6 @@ const WompiLink = z.object({
   active: z.boolean(),
 });
 
-/**
- * Runs a tool body and turns the client's fail-closed refusal (no `environment` in the connection's
- * context) into the typed error a consumer can act on; anything else propagates.
- */
-async function guarded(run: () => Promise<ToolOutcome>): Promise<ToolOutcome> {
-  try {
-    return await run();
-  } catch (e) {
-    if (e instanceof WompiEnvironmentMissing)
-      return err(ProviderErrorCode.INVALID_INPUT, e.message);
-    throw e;
-  }
-}
-
 function toOutcome(result: ReturnType<typeof unwrapWompi>): ToolOutcome {
   return result.ok ? ok(result.data) : err(result.code, result.message);
 }
@@ -120,16 +106,15 @@ export function buildWompiTools(
       input: NO_ARGS,
       // Validating a key is the consumer's connect step, never an agent's move.
       controlPlane: true,
-      handler: (_args, ctx) =>
-        guarded(async () => {
-          const result = unwrapWompi(
-            await client.get('transactions', ctx.request, ctx.metadata, {
-              reference: PROBE_REFERENCE,
-            }),
-            'check credentials',
-          );
-          return result.ok ? ok({ valid: true }) : toOutcome(result);
-        }),
+      handler: async (_args, ctx) => {
+        const result = unwrapWompi(
+          await client.get('transactions', ctx.request, ctx.metadata, {
+            reference: PROBE_REFERENCE,
+          }),
+          'check credentials',
+        );
+        return result.ok ? ok({ valid: true }) : toOutcome(result);
+      },
     }),
 
     tool({
@@ -141,36 +126,35 @@ export function buildWompiTools(
       input: CreatePaymentLinkInput,
       // Charging is the consumer's guarded flow (amount limits, approval), never an agent's call.
       controlPlane: true,
-      handler: (args, ctx) =>
-        guarded(async () => {
-          const result = unwrapWompi(
-            await client.post('payment_links', ctx.request, ctx.metadata, {
-              name: args.name,
-              description: args.description,
-              single_use: true,
-              collect_shipping: false,
-              currency: args.currency,
-              amount_in_cents: args.amountInCents,
-              expires_at: args.expiresAt,
-              sku: args.sku,
-            }),
-            'create payment link',
+      handler: async (args, ctx) => {
+        const result = unwrapWompi(
+          await client.post('payment_links', ctx.request, ctx.metadata, {
+            name: args.name,
+            description: args.description,
+            single_use: true,
+            collect_shipping: false,
+            currency: args.currency,
+            amount_in_cents: args.amountInCents,
+            expires_at: args.expiresAt,
+            sku: args.sku,
+          }),
+          'create payment link',
+        );
+        if (!result.ok) return toOutcome(result);
+        const link = WompiLink.safeParse(result.data);
+        if (!link.success) {
+          return err(
+            ProviderErrorCode.PROVIDER_ERROR,
+            'Wompi create payment link returned an unexpected response',
           );
-          if (!result.ok) return toOutcome(result);
-          const link = WompiLink.safeParse(result.data);
-          if (!link.success) {
-            return err(
-              ProviderErrorCode.PROVIDER_ERROR,
-              'Wompi create payment link returned an unexpected response',
-            );
-          }
-          return ok({
-            linkId: link.data.id,
-            url: `${CHECKOUT_BASE_URL}/${link.data.id}`,
-            expiresAt: link.data.expires_at,
-            active: link.data.active,
-          });
-        }),
+        }
+        return ok({
+          linkId: link.data.id,
+          url: `${CHECKOUT_BASE_URL}/${link.data.id}`,
+          expiresAt: link.data.expires_at,
+          active: link.data.active,
+        });
+      },
     }),
 
     tool({
@@ -180,25 +164,24 @@ export function buildWompiTools(
         'paid, because Wompi keeps a single-use link payable.',
       input: DeactivatePaymentLinkInput,
       controlPlane: true,
-      handler: (args, ctx) =>
-        guarded(async () => {
-          const result = unwrapWompi(
-            await client.patch(`payment_links/${args.linkId}`, ctx.request, ctx.metadata, {
-              active: false,
-            }),
-            'deactivate payment link',
+      handler: async (args, ctx) => {
+        const result = unwrapWompi(
+          await client.patch(`payment_links/${args.linkId}`, ctx.request, ctx.metadata, {
+            active: false,
+          }),
+          'deactivate payment link',
+        );
+        if (!result.ok) return toOutcome(result);
+        // Only Wompi's own answer proves it: the consumer stops watching a link it believes is off.
+        const link = WompiLink.safeParse(result.data);
+        if (!link.success || link.data.active) {
+          return err(
+            ProviderErrorCode.PROVIDER_ERROR,
+            'Wompi did not confirm the payment link is deactivated',
           );
-          if (!result.ok) return toOutcome(result);
-          // Only Wompi's own answer proves it: the consumer stops watching a link it believes is off.
-          const link = WompiLink.safeParse(result.data);
-          if (!link.success || link.data.active) {
-            return err(
-              ProviderErrorCode.PROVIDER_ERROR,
-              'Wompi did not confirm the payment link is deactivated',
-            );
-          }
-          return ok({ linkId: link.data.id, active: false });
-        }),
+        }
+        return ok({ linkId: link.data.id, active: false });
+      },
     }),
 
     tool({
@@ -209,53 +192,52 @@ export function buildWompiTools(
         'It returns every transaction of the window: filter by link id on the caller side.',
       input: ListTransactionsInput,
       controlPlane: true,
-      handler: (args, ctx) =>
-        guarded(async () => {
-          // Keyed by id: an open window shifts while it is read, and a row pushed from one page onto the
-          // next must reach the consumer once.
-          const rows = new Map<string, WompiTransactionRow>();
-          for (let page = 1; ; page++) {
-            const result = unwrapWompi(
-              await client.get('transactions', ctx.request, ctx.metadata, {
-                from_date: args.fromDate,
-                until_date: args.untilDate,
-                page,
-                page_size: PAGE_SIZE,
-              }),
-              'list transactions',
-            );
-            if (!result.ok) return toOutcome(result);
-            const parsed = WompiTransactionPage.safeParse({
-              data: result.data,
-              meta: result.meta,
-            });
-            if (!parsed.success) {
-              return err(
-                ProviderErrorCode.PROVIDER_ERROR,
-                'Wompi list transactions returned an unexpected response',
-              );
-            }
-            if (parsed.data.meta.total_results > MAX_PAGES * PAGE_SIZE) {
-              return err(
-                ProviderErrorCode.PROVIDER_ERROR,
-                'Wompi transaction window too large; narrow fromDate/untilDate',
-              );
-            }
-            for (const row of parsed.data.data) rows.set(row.id, row);
-            if (page * PAGE_SIZE >= parsed.data.meta.total_results) break;
-          }
-          return ok({
-            transactions: [...rows.values()].map((t) => ({
-              id: t.id,
-              paymentLinkId: t.payment_link_id,
-              status: t.status,
-              amountInCents: t.amount_in_cents,
-              currency: t.currency,
-              createdAt: t.created_at,
-              finalizedAt: t.finalized_at,
-            })),
+      handler: async (args, ctx) => {
+        // Keyed by id: an open window shifts while it is read, and a row pushed from one page onto the
+        // next must reach the consumer once.
+        const rows = new Map<string, WompiTransactionRow>();
+        for (let page = 1; ; page++) {
+          const result = unwrapWompi(
+            await client.get('transactions', ctx.request, ctx.metadata, {
+              from_date: args.fromDate,
+              until_date: args.untilDate,
+              page,
+              page_size: PAGE_SIZE,
+            }),
+            'list transactions',
+          );
+          if (!result.ok) return toOutcome(result);
+          const parsed = WompiTransactionPage.safeParse({
+            data: result.data,
+            meta: result.meta,
           });
-        }),
+          if (!parsed.success) {
+            return err(
+              ProviderErrorCode.PROVIDER_ERROR,
+              'Wompi list transactions returned an unexpected response',
+            );
+          }
+          if (parsed.data.meta.total_results > MAX_PAGES * PAGE_SIZE) {
+            return err(
+              ProviderErrorCode.PROVIDER_ERROR,
+              'Wompi transaction window too large; narrow fromDate/untilDate',
+            );
+          }
+          for (const row of parsed.data.data) rows.set(row.id, row);
+          if (page * PAGE_SIZE >= parsed.data.meta.total_results) break;
+        }
+        return ok({
+          transactions: [...rows.values()].map((t) => ({
+            id: t.id,
+            paymentLinkId: t.payment_link_id,
+            status: t.status,
+            amountInCents: t.amount_in_cents,
+            currency: t.currency,
+            createdAt: t.created_at,
+            finalizedAt: t.finalized_at,
+          })),
+        });
+      },
     }),
   ];
 }

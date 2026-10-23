@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { RequestSpec } from '../../../core/auth/http-request';
 import type { RequestResult } from '../../../core/http';
-import { WompiEnvironmentMissing, createWompiClient } from '../client';
+import { createWompiClient } from '../client';
 
 /** An authed-request double: records each spec it is handed and answers 200 with an empty list. */
 function recordingRequest() {
@@ -15,16 +15,13 @@ function recordingRequest() {
 }
 
 describe('wompi client', () => {
-  it('sends a sandbox connection to the sandbox API, with the query it was given', async () => {
+  it('sends a sandbox public key to the sandbox API, with the query it was given', async () => {
     const { request, specs } = recordingRequest();
 
     await createWompiClient().get(
       'transactions',
       request,
-      {
-        publicKey: 'pub_test_x',
-        environment: 'sandbox',
-      },
+      { publicKey: 'pub_test_x' },
       { reference: 'xcale-connection-probe' },
     );
 
@@ -36,26 +33,12 @@ describe('wompi client', () => {
     ]);
   });
 
-  it('sends a production connection to the production API', async () => {
+  it('sends a production public key to the production API', async () => {
     const { request, specs } = recordingRequest();
 
-    await createWompiClient().get('transactions', request, {
-      publicKey: 'pub_prod_x',
-      environment: 'production',
-    });
+    await createWompiClient().get('transactions', request, { publicKey: 'pub_prod_x' });
 
     expect(specs[0]?.url).toBe('https://production.wompi.co/v1/transactions');
-  });
-
-  // Fails closed: a missing environment must never be guessed, or a production tenant's charge
-  // could be sent to the sandbox (and look paid) or a sandbox key to production (and look broken).
-  it('refuses to call Wompi when the connection has no environment', async () => {
-    const { request } = recordingRequest();
-
-    await expect(
-      createWompiClient().get('transactions', request, { publicKey: 'pub_test_x' }),
-    ).rejects.toBeInstanceOf(WompiEnvironmentMissing);
-    expect(request).not.toHaveBeenCalled();
   });
 
   it("posts a JSON body to the connection's API", async () => {
@@ -64,7 +47,7 @@ describe('wompi client', () => {
     await createWompiClient().post(
       'payment_links',
       request,
-      { publicKey: 'pub_test_x', environment: 'sandbox' },
+      { publicKey: 'pub_test_x' },
       { name: 'Valoración', amount_in_cents: 150000 },
     );
 
@@ -78,15 +61,6 @@ describe('wompi client', () => {
     ]);
   });
 
-  it('refuses to post when the connection has no environment', async () => {
-    const { request } = recordingRequest();
-
-    await expect(
-      createWompiClient().post('payment_links', request, { publicKey: 'pub_test_x' }, {}),
-    ).rejects.toBeInstanceOf(WompiEnvironmentMissing);
-    expect(request).not.toHaveBeenCalled();
-  });
-
   // Wompi deactivates a link only with PATCH (PUT answers 404 — verified on the sandbox, 2026-10-22).
   it("patches a JSON body to the connection's API", async () => {
     const { request, specs } = recordingRequest();
@@ -94,7 +68,7 @@ describe('wompi client', () => {
     await createWompiClient().patch(
       'payment_links/test_XGd2UH',
       request,
-      { publicKey: 'pub_test_x', environment: 'sandbox' },
+      { publicKey: 'pub_test_x' },
       { active: false },
     );
 
@@ -106,14 +80,5 @@ describe('wompi client', () => {
         body: '{"active":false}',
       },
     ]);
-  });
-
-  it('refuses to patch when the connection has no environment', async () => {
-    const { request } = recordingRequest();
-
-    await expect(
-      createWompiClient().patch('payment_links/x', request, { publicKey: 'pub_test_x' }, {}),
-    ).rejects.toBeInstanceOf(WompiEnvironmentMissing);
-    expect(request).not.toHaveBeenCalled();
   });
 });

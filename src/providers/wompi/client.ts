@@ -1,6 +1,6 @@
 import type { RequestSpec } from '../../core/auth/http-request';
 import type { RequestResult } from '../../core/http';
-import type { WompiContext, WompiEnvironment } from './context';
+import { environmentOf, type WompiContext, type WompiEnvironment } from './context';
 
 /** Verified (sandbox, 2026-10-21/22) and documented (production). */
 const DEFAULT_BASE_URLS: Readonly<Record<WompiEnvironment, string>> = {
@@ -40,24 +40,11 @@ export interface WompiClient {
   ): Promise<RequestResult>;
 }
 
-/**
- * The call context carried no `environment`. Thrown before any request: guessing would send a
- * production tenant's charge to the sandbox (where it looks paid) or a sandbox key to production
- * (where it looks broken). Tools map it to `PROVIDER_INVALID_INPUT`.
- */
-export class WompiEnvironmentMissing extends Error {
-  constructor() {
-    super('Wompi call needs the connection environment');
-    this.name = 'WompiEnvironmentMissing';
-  }
-}
-
 function baseUrlFor(
   baseUrls: Readonly<Record<WompiEnvironment, string>>,
   ctx: WompiContext,
 ): string {
-  if (!ctx.environment) throw new WompiEnvironmentMissing();
-  return baseUrls[ctx.environment];
+  return baseUrls[environmentOf(ctx.publicKey)];
 }
 
 function buildUrl(baseUrl: string, path: string, params: QueryParams = {}): string {

@@ -32,7 +32,7 @@ describe('wompi provider — conformance', () => {
         {},
         {
           credential: { secret: new SecretString('prv_test_FAKEKEYFORCONFORMANCE000') },
-          metadata: { publicKey: 'pub_test_FAKE', environment: 'sandbox' },
+          metadata: { publicKey: 'pub_test_FAKE' },
         },
       );
       // Dispatched (not UNKNOWN_TOOL): invalid input or Wompi's 401, never "no such tool".
@@ -52,7 +52,7 @@ describe('wompi provider — conformance', () => {
       {},
       {
         credential: { secret: new SecretString('prv_test_FAKEKEYFORCONFORMANCE000') },
-        metadata: { publicKey: 'pub_test_FAKE', environment: 'sandbox' },
+        metadata: { publicKey: 'pub_test_FAKE' },
       },
     );
 

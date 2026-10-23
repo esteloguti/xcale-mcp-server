@@ -1,38 +1,31 @@
 import { describe, expect, it } from 'vitest';
 
 import { wompiAuth } from '../auth';
-import { wompiContext } from '../context';
+import { environmentOf, wompiContext } from '../context';
 
 describe('wompi call context', () => {
-  it('accepts the public key with either environment', () => {
-    expect(wompiContext.parse({ publicKey: 'pub_test_x', environment: 'sandbox' })).toEqual({
-      publicKey: 'pub_test_x',
-      environment: 'sandbox',
-    });
-    expect(wompiContext.parse({ publicKey: 'pub_prod_x', environment: 'production' })).toEqual({
-      publicKey: 'pub_prod_x',
-      environment: 'production',
-    });
+  it('accepts a sandbox or a production public key, and nothing else is asked for', () => {
+    expect(wompiContext.parse({ publicKey: 'pub_test_x' })).toEqual({ publicKey: 'pub_test_x' });
+    expect(wompiContext.parse({ publicKey: 'pub_prod_x' })).toEqual({ publicKey: 'pub_prod_x' });
   });
 
-  // Optional on purpose: a required key would make the consumer's generated connect form ask the
-  // owner for it. The consumer derives it from the key prefixes instead; the client requires it.
-  it('does not require the environment', () => {
-    expect(wompiContext.safeParse({ publicKey: 'pub_test_x' }).success).toBe(true);
+  // The prefix is what picks the API, so a key without a known one cannot be routed anywhere.
+  // A private key pasted in the public field (`prv_…`) is refused too, never sent as context.
+  it('refuses a public key whose prefix names no Wompi environment', () => {
+    for (const publicKey of ['', 'pub_x', 'pub_stg_x', 'prv_test_x', 'pub_test_', 'pub_test_a b']) {
+      expect(wompiContext.safeParse({ publicKey }).success, publicKey).toBe(false);
+    }
   });
 
-  it('requires the public key', () => {
-    expect(wompiContext.safeParse({ environment: 'sandbox' }).success).toBe(false);
-    expect(wompiContext.safeParse({ publicKey: '', environment: 'sandbox' }).success).toBe(false);
-  });
-
-  it('refuses any other environment and any undeclared key', () => {
-    expect(wompiContext.safeParse({ publicKey: 'pub_test_x', environment: 'test' }).success).toBe(
-      false,
-    );
+  it('refuses any undeclared key, the environment included', () => {
     expect(
-      wompiContext.safeParse({ publicKey: 'pub_test_x', environment: 'sandbox', extra: 1 }).success,
+      wompiContext.safeParse({ publicKey: 'pub_test_x', environment: 'sandbox' }).success,
     ).toBe(false);
+  });
+
+  it('reads the environment from the public key prefix', () => {
+    expect(environmentOf('pub_test_x')).toBe('sandbox');
+    expect(environmentOf('pub_prod_x')).toBe('production');
   });
 });
 
