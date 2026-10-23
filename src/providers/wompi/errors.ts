@@ -2,7 +2,7 @@ import { ProviderErrorCode } from '../../core/errors';
 import type { RequestResult } from '../../core/http';
 
 export type Unwrapped =
-  | { readonly ok: true; readonly data: unknown }
+  | { readonly ok: true; readonly data: unknown; readonly meta?: unknown }
   | { readonly ok: false; readonly code: ProviderErrorCode; readonly message: string };
 
 /**
@@ -40,5 +40,6 @@ export function unwrapWompi(res: RequestResult, operation: string): Unwrapped {
       message: `Wompi ${operation} returned an unexpected response`,
     };
   }
-  return { ok: true, data: (body as { data: unknown }).data };
+  const { data, meta } = body as { data: unknown; meta?: unknown };
+  return { ok: true, data, meta };
 }

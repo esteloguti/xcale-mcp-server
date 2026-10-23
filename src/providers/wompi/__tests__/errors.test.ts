@@ -81,7 +81,7 @@ describe('unwrapWompi', () => {
     });
   });
 
-  it('hands back what Wompi wraps in data on success', () => {
+  it('hands back what Wompi wraps in data on success, with its meta', () => {
     const res: RequestResult = {
       ok: true,
       status: 201,
@@ -91,6 +91,7 @@ describe('unwrapWompi', () => {
     expect(unwrapWompi(res, 'create payment link')).toEqual({
       ok: true,
       data: { id: 'test_XGd2UH', active: true },
+      meta: {},
     });
   });
 
