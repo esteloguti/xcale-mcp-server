@@ -495,9 +495,10 @@ describe('cloudbeds provider', () => {
         },
       }),
     });
+    // A real status the property refuses for this reservation (checked out before checking in).
     const r = await provider.callTool(
       'mcp_cloudbeds_modify_reservation',
-      { reservationID: 'R-1', status: 'bogus_status' },
+      { reservationID: 'R-1', status: 'checked_out' },
       ctx({ propertyID: 'PROP1' }),
     );
     expect(r).toMatchObject({
@@ -505,6 +506,55 @@ describe('cloudbeds provider', () => {
       code: ProviderErrorCode.PROVIDER_ERROR,
       message: 'Incorrect status. You cannot change status',
     });
+  });
+
+  // #67: status is the one destructive transition in the toolset, so it takes Cloudbeds' closed
+  // vocabulary. An invented or misspelt value is refused before any call leaves for the property.
+  it.each(['cancelled', 'checkout', 'bogus_status', ''])(
+    'modify_reservation refuses the status %j without calling Cloudbeds',
+    async (status) => {
+      let called = false;
+      const provider = createCloudbedsProvider({
+        fetchImpl: (async () => {
+          called = true;
+          return new Response('{}', { status: 200 });
+        }) as FetchLike,
+      });
+      const r = await provider.callTool(
+        'mcp_cloudbeds_modify_reservation',
+        { reservationID: 'R-1', status },
+        ctx({ propertyID: 'PROP1' }),
+      );
+      expect(r).toMatchObject({ kind: 'error', code: ProviderErrorCode.INVALID_INPUT });
+      expect((r as { message: string }).message).toContain('canceled');
+      expect(called).toBe(false);
+    },
+  );
+
+  it('modify_reservation passes every status of the vocabulary through to Cloudbeds', async () => {
+    for (const status of [
+      'confirmed',
+      'not_confirmed',
+      'canceled',
+      'checked_in',
+      'checked_out',
+      'no_show',
+    ]) {
+      let body = '';
+      const provider = createCloudbedsProvider({
+        fetchImpl: (async (_url: string | URL, init?: RequestInit) => {
+          body = init?.body?.toString() ?? '';
+          return new Response(JSON.stringify({ success: true, data: {} }), { status: 200 });
+        }) as FetchLike,
+      });
+      const r = await provider.callTool(
+        'mcp_cloudbeds_modify_reservation',
+        { reservationID: 'R-1', status },
+        ctx({ propertyID: 'PROP1' }),
+      );
+      expect(r).toMatchObject({ kind: 'success' });
+      expect(new URLSearchParams(body).get('status')).toBe(status);
+    }
   });
 
   it('modify_reservation rejects the non-modifiable check-in date (strict schema)', async () => {

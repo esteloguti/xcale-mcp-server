@@ -14,6 +14,21 @@ type Unwrapped =
   | { readonly ok: false; readonly code: ProviderErrorCode; readonly message: string };
 
 /**
+ * Cloudbeds' reservation statuses — what a reservation can be set to (`modify_reservation`) and what
+ * an email schedule can fire on (`create_email_schedule`). A closed list, so an invented or misspelt
+ * value (`"cancelled"`, `"checkout"`) is refused here with the valid ones named, instead of reaching
+ * the one destructive write in the toolset (#67).
+ */
+const RESERVATION_STATUSES = [
+  'confirmed',
+  'not_confirmed',
+  'canceled',
+  'checked_in',
+  'checked_out',
+  'no_show',
+] as const;
+
+/**
  * Classify a Cloudbeds `success:false` envelope into a typed error code by its `message`.
  *
  * Cloudbeds signals a **scope/permission denial as HTTP 200 + `success:false`**, never 401/403
@@ -615,11 +630,14 @@ export function buildCloudbedsTools(
         .object({
           reservationID: z.string().min(1),
           status: z
-            .string()
+            .enum(RESERVATION_STATUSES)
             .optional()
             .describe(
-              'New reservation status — use "canceled" to cancel the booking. The property validates ' +
-                'the value and rejects a transition it does not allow.',
+              'New reservation status — use "canceled" to cancel the booking. checked_in, ' +
+                'checked_out and no_show are front-desk moves: send them only when the operator asks ' +
+                'for that exact move, never inferred — checked_out closes the folio of a guest who ' +
+                'may still be in the house. The property validates the value and rejects a ' +
+                'transition it does not allow.',
             ),
           checkoutDate: z
             .string()
@@ -1976,14 +1994,7 @@ export function buildCloudbedsTools(
             z
               .object({
                 type: z.literal('reservation_status'),
-                status: z.enum([
-                  'confirmed',
-                  'not_confirmed',
-                  'canceled',
-                  'checked_in',
-                  'checked_out',
-                  'no_show',
-                ]),
+                status: z.enum(RESERVATION_STATUSES),
               })
               .strict(),
             z
