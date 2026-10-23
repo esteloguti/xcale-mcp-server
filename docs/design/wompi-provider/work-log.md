@@ -94,5 +94,5 @@ as the core's materializer really sends it (bearer header included), not as the 
 
 ### Open items (A2)
 
-- [ ] **Logo is a placeholder.** `assets/wompi.svg` is a neutral "W" tile made here, not Wompi's mark (nothing downloaded). Replace it with the official asset from Wompi's brand kit before release; the PR body says so.
+- [x] **Logo.** `assets/wompi.svg` is Wompi's official isotype, taken verbatim from the brand file Sara supplied (`Wompi_LogoSecundario.svg`, 1920×1080 with the full wordmark) and cropped to the 35×35 square tile every other provider logo uses, on the brand green `#B0F2AE`. The wordmark would be unreadable at that size. The placeholder from A2.5 is gone.
 - [ ] **`VOIDED` / `ERROR` were not observed in the sandbox** (only `APPROVED` and `DECLINED`). They come from Wompi's documented status set. Confirm with a real event when the webhook test runs.
