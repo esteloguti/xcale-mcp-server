@@ -94,8 +94,8 @@ The consumer can create a single-use link, deactivate it and list its transactio
 ### ✅ Must Have
 
 - [ ] Auth descriptor: bearer, one secret (`private_key`), header (D-1).
-- [ ] Context schema: `publicKey` (required), `environment` (optional, `'sandbox' | 'production'`) (D-2).
-- [ ] Client: base URL per `ctx.metadata.environment`; fail closed when missing.
+- [ ] Context schema: `publicKey` only, with its `pub_test_` / `pub_prod_` prefix (D-2).
+- [ ] Client: base URL from the public key prefix; an unknown prefix never reaches it (schema).
 - [ ] Tools, all `controlPlane: true` (D-3): `mcp_wompi_check_credentials`, `mcp_wompi_create_payment_link`, `mcp_wompi_deactivate_payment_link`, `mcp_wompi_list_transactions`.
 - [ ] Error mapping to `ProviderErrorCode` with own messages; never echo Wompi bodies (D-5).
 - [ ] Transactions trimmed to settlement fields (D-7).
@@ -123,12 +123,12 @@ The consumer can create a single-use link, deactivate it and list its transactio
 
 Provider Self-Containment keeps the consumer's side to registration data. xcale-backend needs:
 
-| Data                   | Value                                                                                                | Where in the consumer                                                        |
-| :--------------------- | :--------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
-| Toolbox entry          | `slug: 'wompi'`, the MCP server URL, `accountKeyFields: ['publicKey']`                               | `mcpToolboxes` (`xcale-backend/src/modules/mcp/toolboxes.ts`, like `toteat`) |
-| Context it must send   | `publicKey` (asked in the connect form) and `environment` (derived from the key prefixes, not asked) | The consumer's gateway connect extension (its own design)                    |
-| Tools it calls by name | the four `mcp_wompi_*` tools                                                                         | The consumer's Wompi gateway adapter                                         |
-| Errors it must handle  | `PROVIDER_AUTH_EXPIRED` → treat the credential as rejected; the rest per contract §2                 | Same adapter                                                                 |
+| Data                   | Value                                                                                            | Where in the consumer                                                        |
+| :--------------------- | :----------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------- |
+| Toolbox entry          | `slug: 'wompi'`, the MCP server URL, `accountKeyFields: ['publicKey']`                           | `mcpToolboxes` (`xcale-backend/src/modules/mcp/toolboxes.ts`, like `toteat`) |
+| Context it must send   | `publicKey` (asked in the connect form); the environment is read from its prefix by the provider | The consumer's gateway connect extension (its own design)                    |
+| Tools it calls by name | the four `mcp_wompi_*` tools                                                                     | The consumer's Wompi gateway adapter                                         |
+| Errors it must handle  | `PROVIDER_AUTH_EXPIRED` → treat the credential as rejected; the rest per contract §2             | Same adapter                                                                 |
 
 ## 6. UX & Interaction Design
 
@@ -136,7 +136,7 @@ No end-user UI. The consumer calls the tools server-side. What a tenant sees (co
 
 ### 6.1 Discovery
 
-`tools/list` shows **no** Wompi tool (all `controlPlane`). The provider still appears in the catalog with its auth descriptor, context schema and connection probe, so the consumer can generate its connect form: one secret field (private key) plus the required context (`publicKey`). `environment` is optional, so it is not asked of the owner; the consumer writes it.
+`tools/list` shows **no** Wompi tool (all `controlPlane`). The provider still appears in the catalog with its auth descriptor, context schema and connection probe, so the consumer can generate its connect form: one secret field (private key) plus the required context (`publicKey`). Nothing else is asked: the environment comes from the public key's prefix.
 
 ### 6.2 Call outcomes
 
@@ -147,7 +147,7 @@ No end-user UI. The consumer calls the tools server-side. What a tenant sees (co
 | Invalid input / business rejection (422) | `PROVIDER_INVALID_INPUT`                                        |
 | Rate limited (429)                       | `PROVIDER_RATE_LIMITED`                                         |
 | Wompi down / network                     | `PROVIDER_UNAVAILABLE`                                          |
-| `environment` missing from context       | `PROVIDER_INVALID_INPUT` (fail closed, no call made)            |
+| `publicKey` with an unknown prefix       | `PROVIDER_INVALID_INPUT` (no call made)                         |
 
 ---
 
@@ -156,22 +156,22 @@ No end-user UI. The consumer calls the tools server-side. What a tenant sees (co
 No storage: the provider is stateless.
 
 ```
-Consumer ──callTool(token = private key, metadata = { publicKey, environment })──▶ wompi provider ──HTTPS──▶ Wompi API
+Consumer ──callTool(token = private key, metadata = { publicKey })──▶ wompi provider ──HTTPS──▶ Wompi API
 ```
 
 ---
 
 ## 8. Architectural Decisions
 
-| #    | Decision    | Choice                                                                                                                                   | Rationale                                                                                                                                                     |
-| :--- | :---------- | :--------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| AD-1 | Auth        | `type: 'bearer'`, one field `private_key`, `placement: 'header'`, `credentialDelivery: 'forwarded'` (template `cloudbeds/auth.ts:41-47`) | Wompi uses `Authorization: Bearer <key>` (verified).                                                                                                          |
-| AD-2 | Environment | Base URL from `ctx.metadata.environment` (precedent: WooCommerce `ctx.storeUrl`)                                                         | One deployment serves sandbox and production tenants (grill D-2).                                                                                             |
-| AD-3 | Probe       | `GET /v1/transactions?reference=<fixed non-existent>`                                                                                    | Validates the private key, creates nothing, returns nothing personal (verified). `GET /merchants/{pub}` was rejected: public endpoint, returns personal data. |
-| AD-4 | Visibility  | All four tools `controlPlane: true`                                                                                                      | Agent must charge only through the consumer's guarded tools (grill D-3).                                                                                      |
-| AD-5 | Errors      | Status → `ProviderErrorCode`; message `Wompi <op> failed (HTTP n)`; body never propagated                                                | Wompi echoes the key (verified); the core only redacts query values (`src/core/http.ts:47`).                                                                  |
-| AD-6 | Listing     | Date-range listing, page size 200, paginate to the end                                                                                   | The link filter is ignored (verified).                                                                                                                        |
-| AD-7 | Link URL    | Built as `https://checkout.wompi.co/l/{id}`                                                                                              | Not in Wompi's response (verified; loads with 200).                                                                                                           |
+| #    | Decision    | Choice                                                                                                                                   | Rationale                                                                                                                                                                    |
+| :--- | :---------- | :--------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| AD-1 | Auth        | `type: 'bearer'`, one field `private_key`, `placement: 'header'`, `credentialDelivery: 'forwarded'` (template `cloudbeds/auth.ts:41-47`) | Wompi uses `Authorization: Bearer <key>` (verified).                                                                                                                         |
+| AD-2 | Environment | Base URL from the public key prefix (`pub_test_` → sandbox, `pub_prod_` → production), read in the provider                              | One deployment serves sandbox and production tenants (grill D-2). The prefix is Wompi knowledge, so it lives here, not in each consumer (changed 2026-10-22, pre-PR review). |
+| AD-3 | Probe       | `GET /v1/transactions?reference=<fixed non-existent>`                                                                                    | Validates the private key, creates nothing, returns nothing personal (verified). `GET /merchants/{pub}` was rejected: public endpoint, returns personal data.                |
+| AD-4 | Visibility  | All four tools `controlPlane: true`                                                                                                      | Agent must charge only through the consumer's guarded tools (grill D-3).                                                                                                     |
+| AD-5 | Errors      | Status → `ProviderErrorCode`; message `Wompi <op> failed (HTTP n)`; body never propagated                                                | Wompi echoes the key (verified); the core only redacts query values (`src/core/http.ts:47`).                                                                                 |
+| AD-6 | Listing     | Date-range listing, page size 200, paginate to the end                                                                                   | The link filter is ignored (verified).                                                                                                                                       |
+| AD-7 | Link URL    | Built as `https://checkout.wompi.co/l/{id}`                                                                                              | Not in Wompi's response (verified; loads with 200).                                                                                                                          |
 
 ---
 
@@ -179,13 +179,13 @@ Consumer ──callTool(token = private key, metadata = { publicKey, environment
 
 ### Risks
 
-| #   | Risk                                                                   | Likelihood        | Impact | Mitigation                                                                                                                                                              |
-| :-- | :--------------------------------------------------------------------- | :---------------- | :----- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R-0 | The consumer forgets to send `environment` and every call fails        | Medium            | Medium | The provider fails closed with an explicit message (`Wompi call needs the connection environment`), never a silent default; listed as consumer registration data above. |
-| R-1 | A Wompi error body leaks a tenant's private key into a result or a log | High if unguarded | High   | AD-5; a test feeds an error body containing a key and asserts it never appears in the outcome.                                                                          |
-| R-2 | Production behaves differently from sandbox                            | Low               | Medium | Same API documented; first production connection is watched; fixtures cover the shapes.                                                                                 |
-| R-3 | A busy merchant has many transactions per day and the listing is slow  | Medium            | Low    | Consumer passes a tight window (oldest pending charge); page size 200.                                                                                                  |
-| R-4 | Wompi changes the listing API or starts honouring the link filter      | Low               | Low    | Filtering stays on the consumer side; extra results are harmless.                                                                                                       |
+| #   | Risk                                                                       | Likelihood        | Impact | Mitigation                                                                                             |
+| :-- | :------------------------------------------------------------------------- | :---------------- | :----- | :----------------------------------------------------------------------------------------------------- |
+| R-0 | A public key with an unknown prefix (or a private key pasted in its field) | Low               | Medium | Refused by the context schema before any call; the consumer's connect form shows the validation error. |
+| R-1 | A Wompi error body leaks a tenant's private key into a result or a log     | High if unguarded | High   | AD-5; a test feeds an error body containing a key and asserts it never appears in the outcome.         |
+| R-2 | Production behaves differently from sandbox                                | Low               | Medium | Same API documented; first production connection is watched; fixtures cover the shapes.                |
+| R-3 | A busy merchant has many transactions per day and the listing is slow      | Medium            | Low    | Consumer passes a tight window (oldest pending charge); page size 200.                                 |
+| R-4 | Wompi changes the listing API or starts honouring the link filter          | Low               | Low    | Filtering stays on the consumer side; extra results are harmless.                                      |
 
 ### Open Questions
 

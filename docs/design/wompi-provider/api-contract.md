@@ -10,17 +10,17 @@
 
 ## 0. Provider
 
-| Field                                        | Value                                                                                                                                                                                   |
-| :------------------------------------------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Slug                                         | `wompi`                                                                                                                                                                                 |
-| Auth                                         | `{ type: 'bearer', credentialDelivery: 'forwarded', fields: [{ key: 'private_key', label: 'Private key', placement: 'header' }] }` → `Authorization: Bearer <prv_test_… \| prv_prod_…>` |
-| Context (`metadataSchema` / `contextSchema`) | `z.object({ publicKey: z.string().min(1), environment: z.enum(['sandbox', 'production']).optional() }).strict()`                                                                        |
-| `accountContextKeys`                         | `['publicKey']`                                                                                                                                                                         |
-| `connectionProbe`                            | `{ tool: 'mcp_wompi_check_credentials' }`                                                                                                                                               |
-| Base URL                                     | `environment === 'sandbox'` → `https://sandbox.wompi.co/v1` · `'production'` → `https://production.wompi.co/v1` **(documented)** · missing → no call, `PROVIDER_INVALID_INPUT`          |
-| Deployment override                          | `createWompiProvider({ baseUrls? })` for tests only                                                                                                                                     |
+| Field                                        | Value                                                                                                                                                                                           |
+| :------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Slug                                         | `wompi`                                                                                                                                                                                         |
+| Auth                                         | `{ type: 'bearer', credentialDelivery: 'forwarded', fields: [{ key: 'private_key', label: 'Private key', placement: 'header' }] }` → `Authorization: Bearer <prv_test_… \| prv_prod_…>`         |
+| Context (`metadataSchema` / `contextSchema`) | `z.object({ publicKey: z.string().regex(/^pub_(test\|prod)_[A-Za-z0-9]+$/) }).strict()`                                                                                                         |
+| `accountContextKeys`                         | `['publicKey']`                                                                                                                                                                                 |
+| `connectionProbe`                            | `{ tool: 'mcp_wompi_check_credentials' }`                                                                                                                                                       |
+| Base URL                                     | From the public key prefix: `pub_test_…` → `https://sandbox.wompi.co/v1` · `pub_prod_…` → `https://production.wompi.co/v1` **(documented)** · any other prefix → refused by the schema, no call |
+| Deployment override                          | `createWompiProvider({ baseUrls? })` for tests only                                                                                                                                             |
 
-`environment` is optional in the schema so the consumer's generated connect form does not ask the owner for it; the consumer derives it from the key prefixes and sends it as context. The client treats it as required.
+The environment is read from the public key's prefix inside the provider (`environmentOf`), so the consumer sends only `publicKey` and never maps prefixes itself. The prefix is in the **public** key, which is context; the private key is never inspected. Sandbox prefix verified (2026-10-22); production prefix documented by Wompi. _Changed 2026-10-22 from an optional `environment` context field, after the pre-PR review: it was Wompi knowledge the consumer had to replicate._
 
 ---
 
@@ -137,7 +137,7 @@ Codes are the core's `ProviderErrorCode` (`src/core/errors.ts:6-15`), assigned b
 | `5xx`, timeout, network                          | `PROVIDER_UNAVAILABLE`   | `Wompi <operation> failed (HTTP 5xx)` / `Wompi <operation> unreachable` |
 | `2xx` with an unexpected shape                   | `PROVIDER_ERROR`         | `Wompi <operation> returned an unexpected response`                     |
 | Listing window over 50 pages                     | `PROVIDER_ERROR`         | `Wompi transaction window too large; narrow fromDate/untilDate`         |
-| `environment` missing                            | `PROVIDER_INVALID_INPUT` | `Wompi call needs the connection environment`                           |
+| `publicKey` with an unknown prefix               | `PROVIDER_INVALID_INPUT` | the core's input validation message                                     |
 
 **Redaction rule (binding).** Wompi's error bodies repeat the key they received (observed: `"…se recibió: prv_test_…"`). The provider **never** puts a Wompi response body, `reason` or `messages` into a tool outcome, an error message or a log line. A test asserts it.
 

@@ -13,7 +13,7 @@ A new provider, `wompi`, following the `add-provider` pattern of `src/providers/
 
 **Shape of the change:**
 
-- **No core change.** The only new idea is choosing the base URL from call context (`ctx.metadata.environment`), the way WooCommerce uses `ctx.storeUrl`.
+- **No core change.** The only new idea is choosing the base URL from call context (the public key's prefix), the way WooCommerce uses `ctx.storeUrl`.
 - **Footprint:** one new folder plus one line in `src/providers/index.ts`.
 
 **"Done" means:**
@@ -32,9 +32,9 @@ src/providers/
 ├── index.ts                         # MOD — import + one PROVIDERS entry
 └── wompi/                           # NEW
     ├── auth.ts                      # NEW — bearer descriptor
-    ├── context.ts                   # NEW — zod context { publicKey, environment? }
+    ├── context.ts                   # NEW — zod context { publicKey } + environmentOf(prefix)
     ├── manifest.ts                  # NEW — slug, connectionProbe, accountContextKeys
-    ├── client.ts                    # NEW — base URL by environment; get/post/patch over the core request
+    ├── client.ts                    # NEW — base URL by key prefix; get/post/patch over the core request
     ├── errors.ts                    # NEW — unwrapWompi: status → ProviderErrorCode, never the body
     ├── tools.ts                     # NEW — 4 controlPlane tools
     ├── provider.ts                  # NEW — createWompiProvider / wompiProvider
@@ -66,22 +66,22 @@ assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR temp
 
 ## Per-file changes
 
-| File / symbol                                              | Kind | Signature                                                                                                                                                                                                   | Intent                                                                                                                               |
-| :--------------------------------------------------------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
-| `wompi/auth.ts` `wompiAuth`                                | NEW  | `ProviderAuthDescriptor`                                                                                                                                                                                    | Bearer, one field `private_key`, header, forwarded.                                                                                  |
-| `wompi/context.ts` `wompiContext`, `WompiContext`          | NEW  | `z.object({ publicKey, environment? }).strict()`                                                                                                                                                            | Context; `environment` optional (contract §0).                                                                                       |
-| `wompi/manifest.ts` `wompiManifest`                        | NEW  | `ProviderManifest`                                                                                                                                                                                          | `slug: 'wompi'`, `connectionProbe: { tool: 'mcp_wompi_check_credentials' }`, `accountContextKeys: ['publicKey']`.                    |
-| `wompi/client.ts` `createWompiClient`, `WompiClient`       | NEW  | `createWompiClient(deps: { baseUrls?: { sandbox: string; production: string } }): WompiClient` with `get(path, request, ctx, params?)`, `post(path, request, ctx, body)`, `patch(path, request, ctx, body)` | Picks the base URL from `ctx.environment`; missing → returns a typed failure without calling.                                        |
-| `wompi/errors.ts` `unwrapWompi`                            | NEW  | `unwrapWompi(res: RequestResult, operation: string): Unwrapped`                                                                                                                                             | Status → `ProviderErrorCode` (contract §2); fixed own message; never reads `reason`/`messages` into the outcome.                     |
-| `wompi/tools.ts` `buildWompiTools`                         | NEW  | `buildWompiTools(client: WompiClient): ReadonlyArray<ToolDefinition<any, WompiContext>>`                                                                                                                    | The four tools of contract §1; `list_transactions` paginates at 200 and trims fields; `create_payment_link` builds the checkout URL. |
-| `wompi/provider.ts` `createWompiProvider`, `wompiProvider` | NEW  | `createWompiProvider(deps?: { fetchImpl?: FetchLike; baseUrls?: … }): IProvider`                                                                                                                            | `createProvider({ manifest, auth, metadataSchema: wompiContext, tools, fetchImpl })`.                                                |
-| `src/providers/index.ts`                                   | MOD  | `PROVIDERS` (`:18-27`)                                                                                                                                                                                      | One import + one entry.                                                                                                              |
+| File / symbol                                                      | Kind | Signature                                                                                                                                                                                                   | Intent                                                                                                                               |
+| :----------------------------------------------------------------- | :--- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------------------------------- |
+| `wompi/auth.ts` `wompiAuth`                                        | NEW  | `ProviderAuthDescriptor`                                                                                                                                                                                    | Bearer, one field `private_key`, header, forwarded.                                                                                  |
+| `wompi/context.ts` `wompiContext`, `WompiContext`, `environmentOf` | NEW  | `z.object({ publicKey }).strict()` (prefix regex) · `environmentOf(publicKey): 'sandbox' \| 'production'`                                                                                                   | Context; the environment is read from the key prefix (contract §0).                                                                  |
+| `wompi/manifest.ts` `wompiManifest`                                | NEW  | `ProviderManifest`                                                                                                                                                                                          | `slug: 'wompi'`, `connectionProbe: { tool: 'mcp_wompi_check_credentials' }`, `accountContextKeys: ['publicKey']`.                    |
+| `wompi/client.ts` `createWompiClient`, `WompiClient`               | NEW  | `createWompiClient(deps: { baseUrls?: { sandbox: string; production: string } }): WompiClient` with `get(path, request, ctx, params?)`, `post(path, request, ctx, body)`, `patch(path, request, ctx, body)` | Picks the base URL from the public key prefix (`environmentOf`).                                                                     |
+| `wompi/errors.ts` `unwrapWompi`                                    | NEW  | `unwrapWompi(res: RequestResult, operation: string): Unwrapped`                                                                                                                                             | Status → `ProviderErrorCode` (contract §2); fixed own message; never reads `reason`/`messages` into the outcome.                     |
+| `wompi/tools.ts` `buildWompiTools`                                 | NEW  | `buildWompiTools(client: WompiClient): ReadonlyArray<ToolDefinition<any, WompiContext>>`                                                                                                                    | The four tools of contract §1; `list_transactions` paginates at 200 and trims fields; `create_payment_link` builds the checkout URL. |
+| `wompi/provider.ts` `createWompiProvider`, `wompiProvider`         | NEW  | `createWompiProvider(deps?: { fetchImpl?: FetchLike; baseUrls?: … }): IProvider`                                                                                                                            | `createProvider({ manifest, auth, metadataSchema: wompiContext, tools, fetchImpl })`.                                                |
+| `src/providers/index.ts`                                           | MOD  | `PROVIDERS` (`:18-27`)                                                                                                                                                                                      | One import + one entry.                                                                                                              |
 
 ## Slices
 
 | #   | Slice                                          | Owns                                                                                                                | Depends on | DoD                                                                                                                                                                                                             |
 | :-- | :--------------------------------------------- | :------------------------------------------------------------------------------------------------------------------ | :--------- | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| A1  | Client, context, auth, errors (with redaction) | `auth.ts`, `context.ts`, `client.ts`, `errors.ts`, `__tests__/errors.test.ts`, error fixtures                       | —          | Tests: each status maps to its code; an error body carrying a fake key never appears in the outcome or the message; missing `environment` fails closed without a fetch.                                         |
+| A1  | Client, context, auth, errors (with redaction) | `auth.ts`, `context.ts`, `client.ts`, `errors.ts`, `__tests__/errors.test.ts`, error fixtures                       | —          | Tests: each status maps to its code; an error body carrying a fake key never appears in the outcome or the message; an unknown key prefix is refused without a fetch.                                           |
 | A2  | Tools, manifest, provider, registration        | `tools.ts`, `manifest.ts`, `provider.ts`, `index.ts`, `src/providers/index.ts`, `__tests__/wompi.test.ts`, fixtures | A1         | Tests: request shapes (method, path, body, `Authorization`, base URL per environment); outcomes per contract; pagination stops at `total_results`; payer data dropped; the four tools absent from `tools/list`. |
 
 - [ ] A1
@@ -96,7 +96,7 @@ assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR temp
 3. `422` (`INPUT_VALIDATION_ERROR`, and `UNPROCESSABLE` below the minimum) → `PROVIDER_INVALID_INPUT`, and the Spanish `reason` is not propagated.
 4. `429` → `PROVIDER_RATE_LIMITED`; `5xx` and a network failure → `PROVIDER_UNAVAILABLE`.
 5. A `2xx` with an unexpected shape → `PROVIDER_ERROR`.
-6. Base URL: `environment: 'sandbox'` → `sandbox.wompi.co/v1`, `'production'` → `production.wompi.co/v1`; missing → `PROVIDER_INVALID_INPUT` and **no fetch**.
+6. Base URL: `pub_test_…` → `sandbox.wompi.co/v1`, `pub_prod_…` → `production.wompi.co/v1`; any other prefix → `PROVIDER_INVALID_INPUT` and **no fetch**.
 
 **A2 — `wompi.test.ts`**
 
@@ -120,7 +120,7 @@ assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR temp
 ## Test strategy
 
 - Vitest with the toteat-style `fakeFetch` (records URL, method, headers and body) and fixtures from the spike.
-- `CTX = { credential: { secret: new SecretString('prv_test_FAKE') }, metadata: { publicKey: 'pub_test_FAKE', environment: 'sandbox' } }`.
+- `CTX = { credential: { secret: new SecretString('prv_test_FAKE') }, metadata: { publicKey: 'pub_test_FAKE' } }`.
 - Commands: `npm test`, `npm run typecheck`, Prettier check.
 - Optional, after merge: `mcp-contract-qa` against `sandbox.wompi.co` with the Doppler sandbox keys (Mateo's personal sandbox account, approved 2026-10-22).
 
@@ -135,8 +135,8 @@ assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR temp
 
 ## Risks
 
-| Risk                                                     | Mitigation                                                                |
-| :------------------------------------------------------- | :------------------------------------------------------------------------ |
-| Key leak through a Wompi error body                      | Own messages only; dedicated test.                                        |
-| The core's generated connect form asks for `environment` | It is optional in the schema (contract §0); the consumer writes it.       |
-| A merchant with a huge window makes the listing loop     | Hard cap of 50 pages → `PROVIDER_ERROR`; the consumer narrows the window. |
+| Risk                                                 | Mitigation                                                                |
+| :--------------------------------------------------- | :------------------------------------------------------------------------ |
+| Key leak through a Wompi error body                  | Own messages only; dedicated test.                                        |
+| A public key with an unknown prefix                  | Refused by the context schema (contract §0), no call.                     |
+| A merchant with a huge window makes the listing loop | Hard cap of 50 pages → `PROVIDER_ERROR`; the consumer narrows the window. |
