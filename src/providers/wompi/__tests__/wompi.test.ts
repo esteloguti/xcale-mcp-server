@@ -7,8 +7,10 @@ import { createWompiProvider } from '../provider';
 
 import createPaymentLink from '../__fixtures__/createPaymentLink.json';
 import belowMinimum from '../__fixtures__/errors/belowMinimum.json';
+import invalidAccessToken from '../__fixtures__/errors/invalidAccessToken.json';
 import deactivatePaymentLink from '../__fixtures__/deactivatePaymentLink.json';
 import listTransactions from '../__fixtures__/listTransactions.json';
+import probeEmpty from '../__fixtures__/probeEmpty.json';
 
 /** Visibly fake: never derived from a real key. */
 const PRIVATE_KEY = 'prv_test_FAKEKEYFORTHEWOMPITESTS00';
@@ -54,7 +56,7 @@ function successData(result: ToolResult): unknown {
 
 describe('wompi provider — credential probe', () => {
   it('proves a private key with a lookup that creates nothing and returns nothing personal', async () => {
-    const { fetchImpl, calls } = recordingFetch({ body: { data: [], meta: {} } });
+    const { fetchImpl, calls } = recordingFetch({ body: probeEmpty });
     const provider = createWompiProvider({ fetchImpl });
 
     const result = await provider.callTool('mcp_wompi_check_credentials', {}, SANDBOX);
@@ -68,11 +70,9 @@ describe('wompi provider — credential probe', () => {
     expect(calls[0]!.headers['authorization']).toBe(`Bearer ${PRIVATE_KEY}`);
   });
 
-  it('reports a key Wompi rejects as an expired credential', async () => {
-    const { fetchImpl } = recordingFetch({
-      status: 401,
-      body: { error: { type: 'INVALID_ACCESS_TOKEN', reason: 'Llave no válida' } },
-    });
+  // Wompi's 401 echoes the key it received (observed): the outcome carries none of that body.
+  it('reports a key Wompi rejects as an expired credential, without echoing its body', async () => {
+    const { fetchImpl } = recordingFetch({ status: 401, body: invalidAccessToken });
 
     const result = await createWompiProvider({ fetchImpl }).callTool(
       'mcp_wompi_check_credentials',
@@ -81,6 +81,8 @@ describe('wompi provider — credential probe', () => {
     );
 
     expect(result).toMatchObject({ kind: 'error', code: ProviderErrorCode.AUTH_EXPIRED });
+    expect(JSON.stringify(result)).not.toContain('prv_test_FAKEKEYFORTHEREDACTIONTEST0');
+    expect(JSON.stringify(result)).not.toContain('se recibió');
   });
 
   it('refuses, without calling Wompi, a public key whose prefix names no environment', async () => {
@@ -375,6 +377,37 @@ describe('wompi provider — list transactions', () => {
     const { transactions } = successData(result) as { transactions: Array<{ id: string }> };
     expect(transactions).toHaveLength(200);
     expect(new Set(transactions.map((t) => t.id)).size).toBe(200);
+  });
+
+  // Observed on the sandbox: an empty window comes back as `{ data: [], meta: {} }`, with no count.
+  it('reads an empty window answered with no count as no transactions', async () => {
+    const { fetchImpl, calls } = recordingFetch({ body: probeEmpty });
+
+    const result = await createWompiProvider({ fetchImpl }).callTool(
+      'mcp_wompi_list_transactions',
+      WINDOW,
+      SANDBOX,
+    );
+
+    expect(successData(result)).toEqual({ transactions: [] });
+    expect(calls).toHaveLength(1);
+  });
+
+  // Rows without a count cannot say whether more pages follow: settling from them could miss one.
+  it('refuses a page that carries transactions but no count', async () => {
+    const { fetchImpl } = recordingFetch({ body: { data: listTransactions.data, meta: {} } });
+
+    const result = await createWompiProvider({ fetchImpl }).callTool(
+      'mcp_wompi_list_transactions',
+      WINDOW,
+      SANDBOX,
+    );
+
+    expect(result).toMatchObject({
+      kind: 'error',
+      code: ProviderErrorCode.PROVIDER_ERROR,
+      message: 'Wompi list transactions returned an unexpected response',
+    });
   });
 
   it('refuses a window that does not move forward, without calling Wompi', async () => {

@@ -130,3 +130,15 @@ Review finding 4, accepted by Sara. The context is now `{ publicKey }` only, and
 Review findings 3, 6, 9 and 10 stay as decided above: none is needed for correctness today, and each has its reason recorded.
 
 **Gate:** `npx vitest run` 673/673 (51 files) · `npm run typecheck` clean · Prettier clean.
+
+---
+
+## Review fixes — 2026-10-24
+
+From the independent review of #162, fixed on the branch instead of returning the PR.
+
+- **An empty window is zero results, not an error.** Wompi answers an empty listing with `{ "data": [], "meta": {} }` (`sandbox-evidence.md`, the probe), with no `total_results`. The page schema required it, so a window with no transactions came back `PROVIDER_ERROR`. Now a missing count on an empty page reads as zero; a page with rows and no count stays an unexpected response, since it cannot say whether more pages follow. Tests (red → green on the first): "reads an empty window answered with no count as no transactions" and "refuses a page that carries transactions but no count".
+- **The fixtures the contract lists now exist.** `probeEmpty.json` (the observed empty answer) feeds the probe test and the empty-window test; `errors/invalidAccessToken.json` (a `401` whose `reason` carries a fake key) feeds the rejected-key test, which now also asserts that none of the body reaches the outcome.
+- **`origin/dev` merged in** (merge commit): the one conflict, `src/providers/index.ts`, keeps both `profitroomProvider` and `wompiProvider`.
+
+**Gate:** `npx vitest run` 750/750 (54 files) · `npm run typecheck` clean · Prettier clean.

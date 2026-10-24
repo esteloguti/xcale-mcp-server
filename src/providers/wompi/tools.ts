@@ -74,11 +74,21 @@ const WompiTransaction = z.object({
   finalized_at: z.string().nullable(),
 });
 
-/** One page of the listing: its transactions and Wompi's count for the whole window. */
-const WompiTransactionPage = z.object({
-  data: z.array(WompiTransaction),
-  meta: z.object({ total_results: z.number().int().nonnegative() }),
-});
+/**
+ * One page of the listing: its transactions and Wompi's count for the whole window.
+ *
+ * Wompi answers an empty window with `meta: {}` and no count at all (observed on the sandbox,
+ * `sandbox-evidence.md`), so a missing `total_results` on an empty page means zero results. A page
+ * that carries rows but no count cannot tell whether more pages follow, so it stays an unexpected
+ * response: a partial list would let the consumer settle as if it were whole.
+ */
+const WompiTransactionPage = z
+  .object({
+    data: z.array(WompiTransaction),
+    meta: z.object({ total_results: z.number().int().nonnegative().optional() }),
+  })
+  .refine((p) => p.meta.total_results !== undefined || p.data.length === 0)
+  .transform((p) => ({ data: p.data, totalResults: p.meta.total_results ?? 0 }));
 
 type WompiTransactionRow = z.infer<typeof WompiTransaction>;
 
@@ -217,14 +227,14 @@ export function buildWompiTools(
               'Wompi list transactions returned an unexpected response',
             );
           }
-          if (parsed.data.meta.total_results > MAX_PAGES * PAGE_SIZE) {
+          if (parsed.data.totalResults > MAX_PAGES * PAGE_SIZE) {
             return err(
               ProviderErrorCode.PROVIDER_ERROR,
               'Wompi transaction window too large; narrow fromDate/untilDate',
             );
           }
           for (const row of parsed.data.data) rows.set(row.id, row);
-          if (page * PAGE_SIZE >= parsed.data.meta.total_results) break;
+          if (page * PAGE_SIZE >= parsed.data.totalResults) break;
         }
         return ok({
           transactions: [...rows.values()].map((t) => ({
