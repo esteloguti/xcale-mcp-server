@@ -14,7 +14,7 @@ No tools yet. A1 builds the four pieces every tool in A2 stands on, so A2 only a
 | Slice | What                                                                                                              | Files              | Tests                                         |
 | :---- | :---------------------------------------------------------------------------------------------------------------- | :----------------- | :-------------------------------------------- |
 | A1.1  | Call context: `publicKey` required, `environment` optional (`sandbox` \| `production`), strict                    | `wompi/context.ts` | `__tests__/context.test.ts`                   |
-| A1.2  | Auth descriptor: bearer, one field `private_key`, header, forwarded                                               | `wompi/auth.ts`    | `__tests__/context.test.ts` (catalog surface) |
+| A1.2  | Auth descriptor: bearer, one field `private_key`, header, reference                                               | `wompi/auth.ts`    | `__tests__/context.test.ts` (catalog surface) |
 | A1.3  | Client: base URL chosen by `environment`; fails closed, without a request, when it is missing                     | `wompi/client.ts`  | `__tests__/client.test.ts`                    |
 | A1.4  | Error unwrap: core status policy → own message; **never the Wompi body**; unexpected 2xx shape → `PROVIDER_ERROR` | `wompi/errors.ts`  | `__tests__/errors.test.ts`                    |
 

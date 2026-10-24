@@ -33,7 +33,7 @@ describe('wompi auth descriptor', () => {
   it('forwards a single secret, the private key, as a bearer header', () => {
     expect(wompiAuth).toEqual({
       type: 'bearer',
-      credentialDelivery: 'forwarded',
+      credentialDelivery: 'reference',
       fields: [{ key: 'private_key', label: 'Wompi private key', placement: 'header' }],
     });
   });

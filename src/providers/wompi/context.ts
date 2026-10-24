@@ -4,7 +4,7 @@ import { z } from 'zod';
  * Wompi call context (Explicit Context principle). Published to the consumer as `contextSchema`.
  *
  * `publicKey` identifies the merchant account. It is not a secret — Wompi's own checkout pages carry
- * it — so it travels as context, while the private key is the one forwarded secret.
+ * it — so it travels as context, while the private key is the one secret, delivered by reference.
  *
  * It also names the environment: Wompi issues `pub_test_…` keys for its sandbox and `pub_prod_…` for
  * production (sandbox prefix verified 2026-10-22; production documented). One deployment of this
