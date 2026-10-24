@@ -40,7 +40,7 @@ export const detailsSchema = z.object({
       coordinates: z.object({ latitude: z.number(), longitude: z.number() }).nullable(),
     })
     .nullable(),
-  config: z.record(z.unknown()),
+  config: z.record(z.string(), z.unknown()),
   personTypes: z.array(
     z.object({ type: z.string(), minAge: z.number().nullable(), maxAge: z.number().nullable() }),
   ),
@@ -58,6 +58,17 @@ export const roomsSchema = z.array(
     limits: z.object({ min: occupancyLimit, max: occupancyLimit }),
     totalRooms: z.number(),
     offerIds: z.array(z.number()),
+    // Photos by file name only (#145). Optional: a room without photos is still a room, so a missing
+    // or reshaped gallery never fails the room list. The drift probe's `photo` check catches a
+    // reshaped one: rooms that parse with no photo at all are reported as drift.
+    gallery: z
+      .object({
+        featured: z.object({ fileName: z.string() }).nullable(),
+        images: z.array(z.object({ fileName: z.string(), orderIndex: z.number().nullable() })),
+      })
+      .nullable()
+      .optional()
+      .catch(null),
   }),
 );
 
