@@ -1,7 +1,7 @@
 # Wompi Provider — Tool Contract
 
 > **Feature design**: [`feature-design.md`](./feature-design.md) · **Grill**: [`grill-notes.md`](./grill-notes.md) · **Evidence**: [`sandbox-evidence.md`](./sandbox-evidence.md)
-> **Last updated**: 2026-10-22
+> **Last updated**: 2026-10-24
 >
 > Each `input` is the zod source of truth; the JSON Schema in `tools/list` is generated from it. All schemas are `.strict()`: an undeclared key → `PROVIDER_INVALID_INPUT`.
 > Every Wompi value below was observed in the sandbox (2026-10-21/22) unless marked **(documented)**.
@@ -30,12 +30,12 @@ All four are `controlPlane: true`: absent from `tools/list`, callable by name.
 
 ### 1.1 `mcp_wompi_check_credentials` (connection probe)
 
-|            |                                                           |
-| :--------- | :-------------------------------------------------------- |
-| Input      | `z.object({}).strict()`                                   |
-| Wompi call | `GET /transactions?reference=xcale-connection-probe`      |
-| Success    | `ok({ valid: true })` (Wompi answered `200 { data: [] }`) |
-| Failure    | 401/403 → `PROVIDER_AUTH_EXPIRED`; others per §2          |
+|            |                                                                     |
+| :--------- | :------------------------------------------------------------------ |
+| Input      | `z.object({}).strict()`                                             |
+| Wompi call | `GET /transactions?reference=xcale-connection-probe`                |
+| Success    | `ok({ valid: true })` (Wompi answered `200 { data: [], meta: {} }`) |
+| Failure    | 401/403 → `PROVIDER_AUTH_EXPIRED`; others per §2                    |
 
 ### 1.2 `mcp_wompi_create_payment_link`
 
@@ -84,14 +84,14 @@ Note: `single_use: true` does **not** stop a second payment after an approved on
 
 ### 1.3 `mcp_wompi_deactivate_payment_link`
 
-> **Needs `PATCH` in the core (found while building A1, 2026-10-22).** The core transports `GET | POST | PUT | DELETE` (`src/core/auth/http-request.ts`, `HttpMethod`), and Wompi answers `404` to `PUT /payment_links/{id}` (verified): only `PATCH` deactivates. Adding the verb is a `src/core` change. It ships in the provider's build branch as **its own commit** (`feat(core): transport PATCH`), the way `DELETE` entered the core inside the Cloudbeds commit that needed it, and the provider PR carries a "Touches the core" section. See `work-log.md`.
+> **One core change: adding `'PATCH'` to `HttpMethod`** (`src/core/auth/http-request.ts`), following the Cloudbeds `DELETE` precedent (commit `7b7a3bc`). The core transported `GET | POST | PUT | DELETE`, and Wompi answers `404` to `PUT /payment_links/{id}` (verified): only `PATCH` deactivates. The change ships in the provider's build branch as **its own commit** (`feat(core): transport PATCH`), the way `DELETE` entered the core inside the Cloudbeds commit that needed it, and the provider PR carries a "Touches the core" section. See `work-log.md`.
 
-|            |                                                                          |
-| :--------- | :----------------------------------------------------------------------- |
-| Input      | `z.object({ linkId: z.string().min(1) }).strict()`                       |
-| Wompi call | `PATCH /payment_links/{linkId}` with `{ "active": false }`               |
-| Success    | `ok({ linkId, active: false })` (Wompi `200`, `data.active: false`)      |
-| Failure    | per §2 (`404` for an unknown link → `PROVIDER_ERROR`, the core's policy) |
+|            |                                                                                                                                    |
+| :--------- | :--------------------------------------------------------------------------------------------------------------------------------- |
+| Input      | `z.object({ linkId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/) }).strict()` (a path segment: anything else is refused, not encoded) |
+| Wompi call | `PATCH /payment_links/{linkId}` with `{ "active": false }`                                                                         |
+| Success    | `ok({ linkId, active: false })` (Wompi `200`, `data.active: false`)                                                                |
+| Failure    | per §2 (`404` for an unknown link → `PROVIDER_ERROR`, the core's policy)                                                           |
 
 ### 1.4 `mcp_wompi_list_transactions`
 
@@ -106,19 +106,23 @@ z.object({
 
 Wompi call: `GET /transactions?from_date=<fromDate>&until_date=<untilDate>&page=<n>&page_size=200`, repeated with `page=n+1` until `n * 200 >= meta.total_results`, **at most 50 pages** (10,000 transactions). If the window holds more, the tool returns `PROVIDER_ERROR` (`Wompi transaction window too large; narrow fromDate/untilDate`) instead of a partial list, so the consumer never settles from an incomplete page. `untilDate` must be after `fromDate` (`PROVIDER_INVALID_INPUT` otherwise, no call).
 
+**An empty window comes back as `{ "data": [], "meta": {} }`**, with no `total_results` (verified, `sandbox-evidence.md`). It is handled as zero results: `ok({ transactions: [] })`. A page that carries transactions but no `total_results` cannot say whether more pages follow, so it is `PROVIDER_ERROR` (`Wompi list transactions returned an unexpected response`).
+
 Success → `ok({ transactions: WompiTransaction[] })`:
 
 ```ts
 interface WompiTransaction {
   id: string; // "11977675-1792680357-70475"
   paymentLinkId: string | null; // payment_link_id; null when not from a link
-  status: 'APPROVED' | 'DECLINED' | 'PENDING' | 'ERROR' | 'VOIDED'; // APPROVED, DECLINED observed; others documented
+  status: string; // passed through as Wompi sends it. Observed: APPROVED, DECLINED; documented: PENDING, ERROR, VOIDED. Settlement acts on APPROVED
   amountInCents: number;
   currency: string; // "COP"
   createdAt: string; // ISO 8601 UTC
   finalizedAt: string | null; // ISO 8601 UTC
 }
 ```
+
+`status` is a plain string, not a closed union: a state Wompi adds later must not make the whole window unreadable.
 
 Payer data (`customer_email`, `customer_data`, `billing_data`, `shipping_address`, `payment_method`) is **dropped**. The listing returns **all** of the merchant's transactions in the window. Wompi ignores a `payment_link_id` filter (verified), so the consumer filters by link.
 
@@ -147,12 +151,12 @@ Codes are the core's `ProviderErrorCode` (`src/core/errors.ts:6-15`), assigned b
 
 From the spike, with keys removed and payer data replaced by placeholders:
 
-| Fixture                          | Source                                                                                        |
-| :------------------------------- | :-------------------------------------------------------------------------------------------- |
-| `createPaymentLink.json`         | `POST /payment_links` → 201                                                                   |
-| `deactivatePaymentLink.json`     | `PATCH /payment_links/{id}` → 200                                                             |
-| `listTransactions.json`          | `GET /transactions?from_date…` → 200 (one `DECLINED`, one `APPROVED`, same `payment_link_id`) |
-| `probeEmpty.json`                | `GET /transactions?reference=…` → 200 `{ data: [] }`                                          |
-| `errors/invalidAccessToken.json` | 401, with a fake key inside `reason` (for the redaction test)                                 |
-| `errors/missingDescription.json` | 422 `INPUT_VALIDATION_ERROR`                                                                  |
-| `errors/belowMinimum.json`       | 422 `UNPROCESSABLE` (minimum text)                                                            |
+| Fixture                          | Source                                                                                         |
+| :------------------------------- | :--------------------------------------------------------------------------------------------- |
+| `createPaymentLink.json`         | `POST /payment_links` → 201                                                                    |
+| `deactivatePaymentLink.json`     | `PATCH /payment_links/{id}` → 200                                                              |
+| `listTransactions.json`          | `GET /transactions?from_date…` → 200 (one `DECLINED`, one `APPROVED`, same `payment_link_id`)  |
+| `probeEmpty.json`                | `GET /transactions?reference=…` → 200 `{ data: [], meta: {} }` (also the empty listing window) |
+| `errors/invalidAccessToken.json` | 401, with a fake key inside `reason` (for the redaction test)                                  |
+| `errors/missingDescription.json` | 422 `INPUT_VALIDATION_ERROR`                                                                   |
+| `errors/belowMinimum.json`       | 422 `UNPROCESSABLE` (minimum text)                                                             |

@@ -2,7 +2,7 @@
 
 > **Inputs**: [`feature-design.md`](./feature-design.md) · [`api-contract.md`](./api-contract.md) · [`grill-notes.md`](./grill-notes.md) · [`sandbox-evidence.md`](./sandbox-evidence.md)
 > **Issue**: matesjara/xcale-mcp-server#159 · **Docs branch**: `docs/159-wompi-provider` · **Build branch**: `feat/159-wompi-provider` (from `dev` @ `55f2cba`, created when the build starts)
-> **Status**: Draft · **Last updated**: 2026-10-22
+> **Status**: Draft · **Last updated**: 2026-10-24
 >
 > Symbols and intent, **no bodies**. Every change to an existing file is anchored to a real `file:line` on `dev` @ `55f2cba`.
 
@@ -13,8 +13,9 @@ A new provider, `wompi`, following the `add-provider` pattern of `src/providers/
 
 **Shape of the change:**
 
-- **No core change.** The only new idea is choosing the base URL from call context (the public key's prefix), the way WooCommerce uses `ctx.storeUrl`.
-- **Footprint:** one new folder plus one line in `src/providers/index.ts`.
+- **One core change:** adding `'PATCH'` to `HttpMethod` (`src/core/auth/http-request.ts`), following the Cloudbeds `DELETE` precedent (commit `7b7a3bc`), in its own commit. Wompi deactivates a link only with `PATCH`; the type is the whole change.
+- The only new idea in the provider is choosing the base URL from call context (the public key's prefix), the way WooCommerce uses `ctx.storeUrl`.
+- **Footprint:** one new folder, one line in `src/providers/index.ts`, and the `HttpMethod` line above.
 
 **"Done" means:**
 
@@ -103,19 +104,19 @@ assets/wompi.svg                     # NEW — logo (.svg, or .webp; the PR temp
 1. `mcp_wompi_check_credentials` → `GET /transactions?reference=xcale-connection-probe` with `Authorization: Bearer …`; `200 []` → `ok({ valid: true })`; `401` → `PROVIDER_AUTH_EXPIRED`.
 2. `mcp_wompi_create_payment_link` → `POST /payment_links` with the exact body of contract §1.2 (`single_use: true`, `collect_shipping: false`); returns `linkId` and `url = https://checkout.wompi.co/l/{id}`; `description` empty → `PROVIDER_INVALID_INPUT` without a call.
 3. `mcp_wompi_deactivate_payment_link` → `PATCH /payment_links/{id}` with `{ active: false }`. Needs `PATCH` in the core: added in the build branch as its own commit (see `work-log.md`).
-4. `mcp_wompi_list_transactions` → date params + `page_size=200`; follows pages until `total_results`; stops with `PROVIDER_ERROR` past 50 pages; `untilDate <= fromDate` → `PROVIDER_INVALID_INPUT` without a call; drops payer fields (fixture has `customer_email`, the output has not).
+4. `mcp_wompi_list_transactions` → date params + `page_size=200`; follows pages until `total_results`; an empty page with `meta: {}` (no count, as Wompi answers an empty window) is zero results, a page with rows and no count is `PROVIDER_ERROR`; stops with `PROVIDER_ERROR` past 50 pages; `untilDate <= fromDate` → `PROVIDER_INVALID_INPUT` without a call; drops payer fields (fixture has `customer_email`, the output has not).
 5. **Conformance round trip:** `tools/list` lists none of the four; `tools/call` by name works for each; the auth-failure path returns `isError: true` with `PROVIDER_AUTH_EXPIRED`.
 6. Registration: `wompiProvider` is in `PROVIDERS`; manifest probe and account keys as in contract §0.
 
 ### PR checklist mapping (`.github/pull_request_template.md`)
 
-| Template box                                                                          | This change                                                                 |
-| :------------------------------------------------------------------------------------ | :-------------------------------------------------------------------------- |
-| Only `src/providers/{slug}/`, tests, one line in `index.ts`, logo, own docs           | Yes                                                                         |
-| `identityPolicy` on tools that touch a person's records                               | None do (payer data dropped) → absent, justified in the feature design      |
-| Consumer registration data asked in a consumer issue                                  | matesjara/xcale-backend#1861 (feature design, "Consumer registration data") |
-| No `src/core`, `src/protocol` or `src/auth`, dependencies, contracts or consumer code | Yes                                                                         |
-| No raw token persisted or logged; `reveal()` only at egress                           | Yes — the core materializes the bearer header; errors never echo bodies     |
+| Template box                                                                          | This change                                                                                                            |
+| :------------------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------------------------------- |
+| Only `src/providers/{slug}/`, tests, one line in `index.ts`, logo, own docs           | Yes                                                                                                                    |
+| `identityPolicy` on tools that touch a person's records                               | None do (payer data dropped) → absent, justified in the feature design                                                 |
+| Consumer registration data asked in a consumer issue                                  | matesjara/xcale-backend#1861 (feature design, "Consumer registration data")                                            |
+| No `src/core`, `src/protocol` or `src/auth`, dependencies, contracts or consumer code | One core change: `'PATCH'` added to `HttpMethod`, following the Cloudbeds `DELETE` precedent (`7b7a3bc`); nothing else |
+| No raw token persisted or logged; `reveal()` only at egress                           | Yes — the core materializes the bearer header; errors never echo bodies                                                |
 
 ## Test strategy
 

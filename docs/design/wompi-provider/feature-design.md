@@ -5,15 +5,18 @@
 > **Owner**: Sara
 > **Status**: Draft
 > **Target Release**: v1
-> **Last Updated**: 2026-10-22
+> **Last Updated**: 2026-10-24
 > **Issue**: matesjara/xcale-mcp-server#159 · **Epic**: matesjara/xcale-backend#1070 · **Consumer**: matesjara/xcale-backend#1861
 > **Grill**: [`grill-notes.md`](./grill-notes.md) · **Evidence**: [`sandbox-evidence.md`](./sandbox-evidence.md)
 
 ---
 
-> **Architectural guardrail (binding).** Provider Self-Containment: this feature touches only
+> **Architectural guardrail (binding).** Provider Self-Containment: this feature touches
 > `src/providers/wompi/`, its tests and fixtures, one line in `src/providers/index.ts`, its logo and these
-> docs. No change to `src/core|protocol|auth`. If implementation needs one, stop and open an ADR.
+> docs, plus one core change: adding `'PATCH'` to `HttpMethod` (`src/core/auth/http-request.ts`), following the Cloudbeds `DELETE` precedent (commit `7b7a3bc`).
+> Wompi deactivates a link only with `PATCH` (verified, contract §1.3); the transport and the materializer
+> already pass the method through, so the change is the type alone, in its own commit. Nothing else in
+> `src/core|protocol|auth`.
 >
 > **Evidence before contract.** Every Wompi value in the contract was observed in the sandbox
 > (`sandbox-evidence.md`). Production behaviour is assumed identical except the base URL, which is
@@ -170,7 +173,7 @@ Consumer ──callTool(token = private key, metadata = { publicKey })──▶ 
 | AD-3 | Probe       | `GET /v1/transactions?reference=<fixed non-existent>`                                                                                    | Validates the private key, creates nothing, returns nothing personal (verified). `GET /merchants/{pub}` was rejected: public endpoint, returns personal data.                |
 | AD-4 | Visibility  | All four tools `controlPlane: true`                                                                                                      | Agent must charge only through the consumer's guarded tools (grill D-3).                                                                                                     |
 | AD-5 | Errors      | Status → `ProviderErrorCode`; message `Wompi <op> failed (HTTP n)`; body never propagated                                                | Wompi echoes the key (verified); the core only redacts query values (`src/core/http.ts:47`).                                                                                 |
-| AD-6 | Listing     | Date-range listing, page size 200, paginate to the end                                                                                   | The link filter is ignored (verified).                                                                                                                                       |
+| AD-6 | Listing     | Date-range listing, page size 200, paginate to the end; an empty window (`{ data: [], meta: {} }`, no count) is zero results             | The link filter is ignored (verified). Wompi omits `total_results` when the window is empty (verified).                                                                      |
 | AD-7 | Link URL    | Built as `https://checkout.wompi.co/l/{id}`                                                                                              | Not in Wompi's response (verified; loads with 200).                                                                                                                          |
 
 ---

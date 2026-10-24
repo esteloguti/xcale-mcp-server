@@ -116,5 +116,5 @@ Campos: `id`, `status`, `status_message`, `amount_in_cents`, `currency`, `refere
 
 ## Webhook (es del consumidor, no del provider)
 
-- Prueba del 2026-10-22: se prendió el túnel ngrok de Sara (`municipal-arguable-congested.ngrok-free.dev`) y se pagó un link de $1.500. **No llegó ningún evento de Wompi**: el panel de sandbox de la cuenta no apunta a ese túnel. Ese túnel es también el de WhatsApp de dev.
+- Prueba del 2026-10-22: se prendió el túnel ngrok de desarrollo de Sara y se pagó un link de $1.500. **No llegó ningún evento de Wompi**: el panel de sandbox de la cuenta no apunta a ese túnel. Ese túnel es también el de WhatsApp de dev.
 - Según la documentación oficial: una URL de eventos por ambiente, configurada a mano en el panel; firma SHA256 en `X-Event-Checksum`. Queda para el consumidor (xcale-backend).
