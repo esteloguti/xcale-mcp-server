@@ -3,6 +3,7 @@ import { cloudbedsProvider } from './cloudbeds';
 import { echoProvider } from './echo';
 import { erbonProvider } from './erbon';
 import { himedProvider } from './himed';
+import { profitroomProvider } from './profitroom';
 import { siigoProvider } from './siigo';
 import { lobbypmsProvider } from './lobbypms';
 import { toteatProvider } from './toteat';
@@ -24,4 +25,5 @@ export const PROVIDERS: readonly IProvider[] = [
   siigoProvider,
   woocommerceProvider,
   himedProvider,
+  profitroomProvider,
 ];
