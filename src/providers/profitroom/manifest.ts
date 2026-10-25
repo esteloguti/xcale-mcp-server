@@ -3,7 +3,7 @@ import type { ProviderManifest } from '../../core/provider-port';
 export const SLUG = 'profitroom';
 
 /**
- * `logoUrl`: the Profitroom logo in `assets/profitroom.webp`, served by `GET /assets/:filename` (no
+ * `logoUrl`: the Profitroom logo in `assets/profitroom.svg`, served by `GET /assets/:filename` (no
  * auth), like the other providers' logos.
  *
  * Connect support for a consumer (xcale-backend #1599, ADR `credential-less-connections` there):
@@ -19,7 +19,7 @@ export const profitroomManifest: ProviderManifest = {
   slug: SLUG,
   displayName: 'Profitroom',
   category: 'hospitality',
-  logoUrl: `/assets/${SLUG}.webp`,
+  logoUrl: `/assets/${SLUG}.svg`,
   schemaVersion: '2026-10-17',
   providerVersion: '0.3.0',
   connectionProbe: { tool: `mcp_${SLUG}_get_hotel` },
