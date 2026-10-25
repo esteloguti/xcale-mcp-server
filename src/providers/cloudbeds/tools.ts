@@ -5,6 +5,7 @@ import type { RequestResult } from '../../core/http';
 import { definePaginatedList } from '../../core/pagination';
 import { type ToolDefinition, err, ok, toolFactory } from '../../core/tool';
 import { isRealDate, resolveHorizon, shapeRoomCalendars } from './availability-calendar';
+import { WEEKDAYS_IN_DATA_NOTE, weekdayNote, weekdaysFrom } from './weekday';
 import type { CloudbedsClient } from './client';
 import type { CloudbedsContext } from './context';
 import { SLUG } from './manifest';
@@ -101,7 +102,42 @@ function classifyTransportFailure(res: Extract<RequestResult, { ok: false }>): {
       detail: 'This call is restricted to third-party integrations.',
     };
   }
-  return { code: res.errorCode };
+  const detail = providerDetail(res.body);
+  return detail ? { code: res.errorCode, detail } : { code: res.errorCode };
+}
+
+/**
+ * What Cloudbeds said about a failed call, so the agent has something to correct (#71). A 400 used
+ * to reach it as "failed (HTTP 400)" while the body named the missing parameter.
+ *
+ * Cloudbeds answers errors as `{success:false, message}` or `{status:false, error}`; either field is
+ * taken when it is a non-empty string — the provider's own parsed message, the only part of the body
+ * allowed into error text (`add-provider` › `errors-and-tests.md` › Error text). Nothing else is ever
+ * returned: not plain text, not an HTML page, not JSON without a string message (an array, an
+ * object-valued message, a body the transport cut at 500 chars and that no longer parses). The raw
+ * body can echo the request — a 400 on a guest write carried the guest's email and phone — and error
+ * text reaches logs, the consumer and the agent's prompt. The message is folded to one line and
+ * capped. The error CODE is untouched — it still comes from the HTTP status.
+ */
+const MAX_DETAIL = 300;
+
+function providerDetail(body: string): string | undefined {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(body);
+  } catch {
+    return undefined;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+  const { message, error } = parsed as { message?: unknown; error?: unknown };
+  return oneLine(message) ?? oneLine(error);
+}
+
+function oneLine(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const line = value.replace(/\s+/g, ' ').trim();
+  if (line === '') return undefined;
+  return line.length > MAX_DETAIL ? `${line.slice(0, MAX_DETAIL)}…` : line;
 }
 
 /**
@@ -119,17 +155,16 @@ function unwrap(res: RequestResult, method: string): Unwrapped {
     return {
       ok: false,
       code,
-      message: detail
-        ? `Cloudbeds ${method}: ${detail}`
-        : `Cloudbeds ${method} failed (HTTP ${res.status})`,
+      message: `Cloudbeds ${method} failed (HTTP ${res.status})${detail ? `: ${detail}` : ''}`,
     };
   }
-  const body = res.data as {
-    success?: boolean;
-    data?: unknown;
-    total?: number;
-    message?: string;
-  } | null;
+  // Only an object can be the envelope. A bare 200 string or number used to reach `'data' in body`,
+  // which throws on a non-object and crashed the call instead of answering it (#72); it now passes
+  // through as the data, as any body without a `data` field always has.
+  const body =
+    typeof res.data === 'object' && res.data !== null
+      ? (res.data as { success?: boolean; data?: unknown; total?: number; message?: string })
+      : null;
   if (body && body.success === false) {
     return {
       ok: false,
@@ -137,7 +172,7 @@ function unwrap(res: RequestResult, method: string): Unwrapped {
       message: body.message ?? `Cloudbeds ${method} returned success=false`,
     };
   }
-  const data = body && 'data' in body ? body.data : body;
+  const data = body && 'data' in body ? body.data : res.data;
   return body?.total !== undefined ? { ok: true, data, total: body.total } : { ok: true, data };
 }
 
@@ -409,7 +444,10 @@ export function buildCloudbedsTools(
           children: args.children,
         });
         const u = unwrap(res, 'getAvailableRoomTypes');
-        return u.ok ? ok(u.data) : err(u.code, u.message);
+        if (!u.ok) return err(u.code, u.message);
+        // The weekdays ride the message, not the data: consumers read `data` as Cloudbeds' own
+        // array (the backend prices extra guests from it), and wrapping it would break them (#111).
+        return ok(u.data, weekdayNote({ startDate: args.startDate, endDate: args.endDate }));
       },
     }),
 
@@ -517,7 +555,16 @@ export function buildCloudbedsTools(
                   'so no calendar can be built. Check specific dates with get_availability instead.',
           );
         }
-        return ok({ from: args.startDate, to: endDate, roomTypes: shaped.roomTypes });
+        return ok(
+          {
+            from: args.startDate,
+            to: endDate,
+            roomTypes: shaped.roomTypes,
+            // Every date a window or `unavailable` can name, checkout included (#111).
+            weekdays: weekdaysFrom(args.startDate, endDate),
+          },
+          WEEKDAYS_IN_DATA_NOTE,
+        );
       },
     }),
 
