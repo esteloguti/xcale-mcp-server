@@ -46,6 +46,51 @@ describe('toJsonSchema', () => {
     });
   });
 
+  it('keeps a declared safe-integer bound under a wrapper (optional, default, nullable)', () => {
+    const max = Number.MAX_SAFE_INTEGER;
+    const min = Number.MIN_SAFE_INTEGER;
+    const props = (shape: z.ZodRawShape) =>
+      (toJsonSchema(z.object(shape)) as { properties: Record<string, unknown> }).properties;
+
+    expect(props({ a: z.number().int().max(max).optional() }).a).toEqual({
+      type: 'integer',
+      maximum: max,
+    });
+    expect(props({ a: z.number().int().min(min).optional() }).a).toEqual({
+      type: 'integer',
+      minimum: min,
+    });
+    expect(props({ a: z.number().int().max(max).default(1) }).a).toEqual({
+      type: 'integer',
+      maximum: max,
+      default: 1,
+    });
+    expect(props({ a: z.number().int().max(max).nullable() }).a).toEqual({
+      anyOf: [{ type: 'integer', maximum: max }, { type: 'null' }],
+    });
+    expect(
+      props({ a: z.number().int().min(min).max(max).nullable().optional().default(null) }).a,
+    ).toEqual({
+      anyOf: [{ type: 'integer', minimum: min, maximum: max }, { type: 'null' }],
+      default: null,
+    });
+  });
+
+  it('still drops the implicit bound zod adds to a wrapped .int()', () => {
+    const { properties } = toJsonSchema(
+      z.object({
+        a: z.number().int().optional(),
+        b: z.number().int().default(1),
+        c: z.number().int().nullable(),
+        d: z.number().int().nullable().optional().default(null),
+      }),
+    ) as { properties: Record<string, unknown> };
+    expect(properties.a).toEqual({ type: 'integer' });
+    expect(properties.b).toEqual({ type: 'integer', default: 1 });
+    expect(properties.c).toEqual({ type: ['integer', 'null'] });
+    expect(properties.d).toEqual({ type: ['integer', 'null'], default: null });
+  });
+
   it("publishes an email's format without zod's own regex, but keeps a declared pattern", () => {
     expect(toJsonSchema(z.string().email())).toEqual({ type: 'string', format: 'email' });
     expect(toJsonSchema(z.string().regex(/^[A-Z]{3}$/))).toMatchObject({ pattern: '^[A-Z]{3}$' });

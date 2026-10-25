@@ -5,9 +5,26 @@ import type { JsonSchema } from './types';
 /** The pattern zod 4 writes next to `format: "email"` on its own — not one a provider declared. */
 const ZOD_EMAIL_PATTERN = (z.toJSONSchema(z.string().email()) as { pattern?: string }).pattern;
 
-/** True when the schema carries a `.min()`/`.max()` check — the bound is deliberate, not from `.int()`. */
+/**
+ * True when the schema, or a schema it wraps, carries a `.min()`/`.max()` check — the bound is
+ * deliberate, not from `.int()`. The override visits the OUTERMOST node of a field, so a bound
+ * declared under `.optional()`, `.default()`, `.nullable()` and the like lives in the wrapped
+ * schema's checks; this follows every wrapper that has an `innerType` (and a pipe's input side,
+ * which `io: 'input'` publishes).
+ */
 function hasExplicitBound(schema: z.core.$ZodType, check: 'less_than' | 'greater_than'): boolean {
-  return (schema._zod.def.checks ?? []).some((c) => c._zod.def.check === check);
+  let node: z.core.$ZodType | undefined = schema;
+  while (node) {
+    const def = node._zod.def as {
+      checks?: z.core.$ZodCheck[];
+      innerType?: z.core.$ZodType;
+      in?: z.core.$ZodType;
+      type: string;
+    };
+    if ((def.checks ?? []).some((c) => c._zod.def.check === check)) return true;
+    node = def.innerType ?? (def.type === 'pipe' ? def.in : undefined);
+  }
+  return false;
 }
 
 /**
