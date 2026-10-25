@@ -1,4 +1,4 @@
-# ADR: The identity policy declares record lookups — field kinds, result identities, a projection and the created record
+# ADR 0023: The identity policy declares record lookups — field kinds, result identities, a projection and the created record
 
 - **Status:** Accepted (Mateo, 2026-10-25, on the architect's call — the whole vocabulary)
 - **Date:** 2026-10-24
