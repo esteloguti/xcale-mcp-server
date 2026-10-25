@@ -19,16 +19,18 @@ describe('woocommerce publishes whose data each tool can reach', () => {
   });
 
   it('binds the reads and writes of one order or customer to the person who owns it', () => {
-    for (const name of [
-      'mcp_woocommerce_get_order',
-      'mcp_woocommerce_update_order',
-      'mcp_woocommerce_get_customer',
-      'mcp_woocommerce_update_customer',
-    ]) {
+    // An order id and a customer id live in different id spaces: order 42 is not customer 42.
+    for (const [name, kind] of [
+      ['mcp_woocommerce_get_order', 'woocommerce:order'],
+      ['mcp_woocommerce_update_order', 'woocommerce:order'],
+      ['mcp_woocommerce_get_customer', 'woocommerce:customer'],
+      ['mcp_woocommerce_update_customer', 'woocommerce:customer'],
+    ] as const) {
       expect(byName.get(name)?.identityPolicy, name).toEqual({
         mode: 'subject-bound',
         identityFields: [],
         recordOwnershipField: 'id',
+        recordOwnershipKind: kind,
       });
     }
   });

@@ -1065,7 +1065,12 @@ export function buildWoocommerceTools(
       name: `mcp_${SLUG}_update_order`,
       // Reaches one person's record by its id: their contact and address. Bound to the person who owns
       // it, so a consumer can serve the record its own customer placed and refuse a guessed id.
-      identityPolicy: { mode: 'subject-bound', identityFields: [], recordOwnershipField: 'id' },
+      identityPolicy: {
+        mode: 'subject-bound',
+        identityFields: [],
+        recordOwnershipField: 'id',
+        recordOwnershipKind: `${SLUG}:order`,
+      },
       description:
         "Update an order's status — notably to `cancelled` to void an order that will not be paid. " +
         'Idempotent: setting the status it already has is a no-op at WooCommerce.',
@@ -1206,7 +1211,12 @@ export function buildWoocommerceTools(
       name: `mcp_${SLUG}_get_customer`,
       // Reaches one person's record by its id: their contact and address. Bound to the person who owns
       // it, so a consumer can serve the record its own customer placed and refuse a guessed id.
-      identityPolicy: { mode: 'subject-bound', identityFields: [], recordOwnershipField: 'id' },
+      identityPolicy: {
+        mode: 'subject-bound',
+        identityFields: [],
+        recordOwnershipField: 'id',
+        recordOwnershipKind: `${SLUG}:customer`,
+      },
       description: 'Get one customer by id: email, name, and contact phone.',
       input: getCustomerInput,
       handler: async (args, ctx) => {
@@ -1241,7 +1251,12 @@ export function buildWoocommerceTools(
       name: `mcp_${SLUG}_update_customer`,
       // Reaches one person's record by its id: their contact and address. Bound to the person who owns
       // it, so a consumer can serve the record its own customer placed and refuse a guessed id.
-      identityPolicy: { mode: 'subject-bound', identityFields: [], recordOwnershipField: 'id' },
+      identityPolicy: {
+        mode: 'subject-bound',
+        identityFields: [],
+        recordOwnershipField: 'id',
+        recordOwnershipKind: `${SLUG}:customer`,
+      },
       description: "Update a customer's email, name and/or phone. Only the fields you pass change.",
       input: updateCustomerInput,
       handler: async (args, ctx) => {
@@ -1469,7 +1484,12 @@ export function buildWoocommerceTools(
       name: `mcp_${SLUG}_get_order`,
       // Reaches one person's record by its id: their contact and address. Bound to the person who owns
       // it, so a consumer can serve the record its own customer placed and refuse a guessed id.
-      identityPolicy: { mode: 'subject-bound', identityFields: [], recordOwnershipField: 'id' },
+      identityPolicy: {
+        mode: 'subject-bound',
+        identityFields: [],
+        recordOwnershipField: 'id',
+        recordOwnershipKind: `${SLUG}:order`,
+      },
       description:
         'Get one order by id: status, total, line items, and the buyer contact + shipping address. Owner-facing.',
       input: getOrderInput,
