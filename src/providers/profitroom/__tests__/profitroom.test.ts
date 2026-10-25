@@ -842,8 +842,8 @@ describe('connect support for a credential-less consumer', () => {
 
   it('publishes its logo, served from assets/', () => {
     const { manifest } = createProfitroomProvider({ fetchImpl: fakeEngine().fetchImpl });
-    expect(manifest.logoUrl).toBe('/assets/profitroom.webp');
-    expect(existsSync(join(process.cwd(), 'assets', 'profitroom.webp'))).toBe(true);
+    expect(manifest.logoUrl).toBe('/assets/profitroom.svg');
+    expect(existsSync(join(process.cwd(), 'assets', 'profitroom.svg'))).toBe(true);
   });
 
   it('get_hotel discovers hotelKey from the URL alone, as the owner pasted it', async () => {
