@@ -1,8 +1,9 @@
 # ADR: The identity policy declares record lookups — field kinds, result identities, a projection and the created record
 
-- **Status:** Accepted (2026-10-22, in the grill of matesjara/xcale-backend#1852 — JuanJo, with Mateo's direction)
-- **Date:** 2026-10-22
-- **Decision makers:** Mateo (direction: one transversal capability, not one per provider); Juan José (design lead)
+- **Status:** Proposed — for Mateo to accept, with the consumer's design (matesjara/xcale-backend#1853)
+- **Date:** 2026-10-24
+- **Decision makers:** Mateo decides (direction, 2026-10-22: one transversal capability, not one per provider);
+  Juan José proposes
 - **Tags:** core, contract, identity, privacy, health, Ley-1581
 - **Number:** _unassigned (assigned at merge)_
 - **Extends:** [identity-policy-travels-in-tool-meta](0019-identity-policy-travels-in-tool-meta.md) and
@@ -48,9 +49,10 @@ The `subject-bound` variant gains **optional** fields, published like the rest o
 | `resultIdentityFields` | `Record<string, 'phone' \| 'email' \| 'document'>` | Which field on each returned item carries the person, and its kind. The consumer keeps only the items whose identity matches the person exactly (E.164 for phones), whatever the provider's filter returned. |
 | `resultRecordIdField` | `string` | The record id on each item. The consumer keeps it server-side and hands the agent an opaque handle instead. |
 | `projection` | `string[]` | The **allowlist** of item fields that may be shown when a person sees their records. Whatever is not listed never reaches the agent on that road: not the record number, not free text. |
-| `projectionDetail` | `string[]` | Extra item fields that may be shown **only when the tenant opts in** (for health data: specialty, practitioner). Never shown by default; the health floor shows `projection` only. |
-| `resultDateField` | `string` | The date on each item that places the record in time — a stay's end, an appointment's start, an order's date — in ISO 8601. The consumer serves records found without a code only inside its recency window (the future, or the recent past), so a recycled or mistyped phone never opens old history. |
+| `projectionDetail` | `string[]` | Extra item fields the provider marks as more sensitive than `projection` (for health data: specialty, practitioner). When, if ever, the consumer shows them is the consumer's. |
+| `resultDateField` | `string` | The date on each item that places the record in time — a stay's end, an appointment's start, an order's date — in ISO 8601. It lets the consumer place a record in time — for example, to apply a recency rule of its own. |
 | `createdRecordIdField` | `string` | On a tool that **creates** a record (a booking, an appointment, an order): where the new record's id is in the result, so the consumer can link it to the person who created it — ownership by construction, declared once instead of coded per provider. |
+| `recordOwnershipKind` | `string` | The id space of the record ids this tool names — in `recordOwnershipField`, `ownedResultField` or `createdRecordIdField` — as `<provider>:<kind>` (`woocommerce:order`, `woocommerce:customer`, `himed:cita`). Ids of different kinds never compare equal: an order `42` is not a customer `42`. Absent: the provider has one kind of record id. |
 | `recordAction` | `'cancel' \| 'change' \| 'read'` | On a **write** tool that declares `recordOwnershipField`: which action that call performs, so the consumer checks a step-up permit bound to that record and that action. |
 
 `recordOwnershipField`, `ownedResultField` and `alwaysEnforce` are reused unchanged. A write tool that
@@ -60,9 +62,8 @@ the Own Records road.**
 
 **A shared phone is detected from what the rows already declare.** When one phone's records carry several
 distinct `resultIdentityFields` values of kind `email` or `document`, the consumer treats that phone as
-shared (a receptionist's, an agency's, a household's). No name field is needed for it. `alwaysEnforce` stays the provider's statement that the data is not the tenant's
-to leave unprotected; on the consumer that is the **health tier** of Own Records: a proven phone plus the
-patient's document to see, and a minimal default view.
+shared (a receptionist's, an agency's, a household's). No name field is needed for it. `alwaysEnforce` stays the provider's statement that the data is sensitive (0019); what the consumer
+does with that statement is the consumer's.
 
 **The gateway's contract: an absent `identityPolicy` means the tool touches no person's records.** A tool
 that touches them without declaring is a defect of this gateway, and it is fixed here, never worked around
@@ -89,11 +90,11 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
 - **Why rejected:** the red-team review of the plan showed each of those paths. An allowlist fails
   closed: a field nobody declared is a field nobody sees.
 
-### Alternative C (accepted): provider-declared vocabulary, enforced and projected by the consumer
+### Alternative C (proposed): provider-declared vocabulary, enforced and projected by the consumer
 - **Pros:** one core for every provider; the knowledge stays with the party that has it; a provider that
   has not declared is simply not on the road, never half-served; additive under 0001.
 - **Cons:** listed below.
-- **Why accepted:** it is the only option where both the generic mechanism and fail-closed exposure hold.
+- **Why proposed:** it is the only option where both the generic mechanism and fail-closed exposure hold.
 
 ## Consequences
 
@@ -105,8 +106,8 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
 ### Negative
 - **Every provider must declare to join**, and each declaration is a published-menu change: a
   `schemaVersion` bump (0001/0019), or a warm consumer cache keeps the old policy.
-- **Some records cannot be placed in time.** A tool without `resultDateField` cannot serve records found
-  without a code, because the consumer cannot apply its recency window to them.
+- **Some records cannot be placed in time.** A tool without `resultDateField` gives the consumer no date to
+  reason about, so a consumer that needs one leaves the tool off its road.
 - **The projection is upkeep.** A provider that adds a field to its result has to decide whether it
   belongs in the projection; until it does, the field is invisible on this road (fail closed, by design).
 - **`identityFieldKinds` leaves `name` in `identityFields`** for compatibility rather than moving it out.
@@ -129,7 +130,7 @@ consumer enforces. **A tool that declares `recordLookup` without a `projection` 
 ## References
 
 - Epic: matesjara/xcale-backend#1852 (Own Records); absorbs matesjara/xcale-backend#1842 (HiMed).
-- Consumer: xcale-backend's ADR amending its ADR 0062 (Record Access Grant, no existence oracle) and
+- Consumer: xcale-backend's proposed ADR `own-records-proof-grants-access-never-fuses` and
   `docs/design/own-records/feature-design.md` — they follow this one, provider before consumer.
 - Depends on xcale-backend#1442 for the consumer's reading of `ownedResultField`, `recordOwnershipField`
   and `alwaysEnforce`.
