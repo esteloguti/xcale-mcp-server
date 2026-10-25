@@ -95,24 +95,33 @@ function classifyTransportFailure(res: Extract<RequestResult, { ok: false }>): {
  * to reach it as "failed (HTTP 400)" while the body named the missing parameter.
  *
  * Cloudbeds answers errors as `{success:false, message}` or `{status:false, error}`; either field is
- * taken. Plain text is kept as it is — the transport already capped it and masked query values. An
- * HTML page (a gateway's 502) is dropped: it says nothing the status does not, and it would land in
- * the agent's prompt as noise. The error CODE is untouched — it still comes from the HTTP status.
+ * taken when it is a non-empty string — the provider's own parsed message, the only part of the body
+ * allowed into error text (`add-provider` › `errors-and-tests.md` › Error text). Nothing else is ever
+ * returned: not plain text, not an HTML page, not JSON without a string message (an array, an
+ * object-valued message, a body the transport cut at 500 chars and that no longer parses). The raw
+ * body can echo the request — a 400 on a guest write carried the guest's email and phone — and error
+ * text reaches logs, the consumer and the agent's prompt. The message is folded to one line and
+ * capped. The error CODE is untouched — it still comes from the HTTP status.
  */
+const MAX_DETAIL = 300;
+
 function providerDetail(body: string): string | undefined {
-  const text = body.trim();
-  if (text === '' || text.startsWith('<')) return undefined;
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed === 'object' && parsed !== null) {
-      const { message, error } = parsed as { message?: unknown; error?: unknown };
-      if (typeof message === 'string' && message.trim() !== '') return message.trim();
-      if (typeof error === 'string' && error.trim() !== '') return error.trim();
-    }
+    parsed = JSON.parse(body);
   } catch {
-    // Not JSON — plain text is the detail.
+    return undefined;
   }
-  return text;
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
+  const { message, error } = parsed as { message?: unknown; error?: unknown };
+  return oneLine(message) ?? oneLine(error);
+}
+
+function oneLine(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const line = value.replace(/\s+/g, ' ').trim();
+  if (line === '') return undefined;
+  return line.length > MAX_DETAIL ? `${line.slice(0, MAX_DETAIL)}…` : line;
 }
 
 /**

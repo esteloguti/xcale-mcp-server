@@ -49,9 +49,14 @@ describe('a failed call carries what Cloudbeds said (#71)', () => {
     expect(res.message).toBe('Cloudbeds getGuest failed (HTTP 404): Unknown method.');
   });
 
-  it('keeps a plain-text body as it is', async () => {
-    const res = await getGuest(answering(429, 'Too many requests', 'text/plain'));
-    expect(res.message).toBe('Cloudbeds getGuest failed (HTTP 429): Too many requests');
+  it('folds a multi-line message to one line and caps its length', async () => {
+    const long = `Parameter\n  checkinDate is required. ${'x'.repeat(400)}`;
+    const res = await getGuest(answering(400, JSON.stringify({ success: false, message: long })));
+    expect(res.message).toMatch(
+      /^Cloudbeds getGuest failed \(HTTP 400\): Parameter checkinDate is required\. x+…$/,
+    );
+    expect(res.message).not.toContain('\n');
+    expect((res.message ?? '').length).toBeLessThan(400);
   });
 
   it('leaves out an HTML error page — noise in the agent prompt, nothing the status does not say', async () => {
@@ -72,6 +77,48 @@ describe('a failed call carries what Cloudbeds said (#71)', () => {
     );
     expect(res.code).toBe(ProviderErrorCode.AUTH_EXPIRED);
     expect(res.message).toContain('Invalid token');
+  });
+});
+
+describe('nothing but the parsed message reaches the error text — never the raw body', () => {
+  const guest = 'maria.perez@example.com';
+  const phone = '+57 300 123 4567';
+
+  it.each([
+    [
+      'JSON without a message',
+      JSON.stringify({ success: false, guestEmail: guest, guestPhone: phone }),
+      'application/json',
+    ],
+    ['a JSON array', JSON.stringify([{ guestEmail: guest }, 'Invalid guest']), 'application/json'],
+    [
+      'an object-valued message',
+      JSON.stringify({ success: false, message: { guestEmail: guest, guestPhone: phone } }),
+      'application/json',
+    ],
+    [
+      'a JSON body cut at 500 chars',
+      JSON.stringify({
+        success: false,
+        guestEmail: guest,
+        guestPhone: phone,
+        notes: 'n'.repeat(600),
+        message: 'Invalid guest',
+      }),
+      'application/json',
+    ],
+    [
+      'plain text carrying an email and a token',
+      `Bad request for ${guest}, token cbat_live1234567890abcdef`,
+      'text/plain',
+    ],
+    ['plain text', 'Too many requests', 'text/plain'],
+  ])('%s → only the status', async (_label, body, contentType) => {
+    const res = await getGuest(answering(400, body, contentType));
+    expect(res.kind).toBe('error');
+    expect(res.code).toBe(ProviderErrorCode.INVALID_INPUT);
+    expect(res.message).toBe('Cloudbeds getGuest failed (HTTP 400)');
+    expect(res.message).not.toContain(guest);
   });
 });
 
