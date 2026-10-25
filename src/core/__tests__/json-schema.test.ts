@@ -35,6 +35,17 @@ describe('toJsonSchema', () => {
     });
   });
 
+  it('keeps a declared bound even when it equals the safe-integer limit', () => {
+    expect(toJsonSchema(z.number().int().max(Number.MAX_SAFE_INTEGER))).toEqual({
+      type: 'integer',
+      maximum: Number.MAX_SAFE_INTEGER,
+    });
+    expect(toJsonSchema(z.number().int().min(Number.MIN_SAFE_INTEGER))).toEqual({
+      type: 'integer',
+      minimum: Number.MIN_SAFE_INTEGER,
+    });
+  });
+
   it("publishes an email's format without zod's own regex, but keeps a declared pattern", () => {
     expect(toJsonSchema(z.string().email())).toEqual({ type: 'string', format: 'email' });
     expect(toJsonSchema(z.string().regex(/^[A-Z]{3}$/))).toMatchObject({ pattern: '^[A-Z]{3}$' });
