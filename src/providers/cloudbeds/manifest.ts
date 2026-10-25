@@ -51,7 +51,8 @@ export const cloudbedsManifest: ProviderManifest = {
   // `modify_reservation.status` is now an enum of Cloudbeds' reservation statuses (was free text),
   // and `create_reservation.thirdPartyIdentifier` is now required (was optional). Both narrow what
   // is accepted; xcale-backend already sends only `status: 'canceled'` and always stamps
-  // `thirdPartyIdentifier`, so its calls are unchanged.
+  // `thirdPartyIdentifier`, so its calls are unchanged. The status description states what each
+  // front-desk status does in Cloudbeds and leaves when to send it to the tenant's instructions.
   schemaVersion: '2026-10-22',
   providerVersion: '0.13.0',
   logoUrl: '/assets/cloudbeds.svg',

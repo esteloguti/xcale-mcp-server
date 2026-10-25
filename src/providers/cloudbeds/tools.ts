@@ -645,11 +645,10 @@ export function buildCloudbedsTools(
             .enum(RESERVATION_STATUSES)
             .optional()
             .describe(
-              'New reservation status — use "canceled" to cancel the booking. checked_in, ' +
-                'checked_out and no_show are front-desk moves: send them only when the operator asks ' +
-                'for that exact move, never inferred — checked_out closes the folio of a guest who ' +
-                'may still be in the house. The property validates the value and rejects a ' +
-                'transition it does not allow.',
+              'New reservation status — "canceled" cancels the booking. checked_in, checked_out and ' +
+                'no_show are front-desk moves in Cloudbeds: checked_in marks the guest as arrived, ' +
+                'checked_out closes the reservation folio, and no_show marks a guest who did not ' +
+                'arrive. The property validates the value and rejects a transition it does not allow.',
             ),
           checkoutDate: z
             .string()
