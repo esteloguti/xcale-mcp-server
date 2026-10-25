@@ -72,6 +72,7 @@ in one release).
 ## Known gaps at ship
 
 - ✅ Provider logo (2026-10-16, with #146): `assets/profitroom.webp` (400×400, from the image Sara supplied), `logoUrl: /assets/profitroom.webp`, published by `/discover`.
+- ✅ Logo restyled (2026-10-24): `assets/profitroom.svg` (black tile, white mark — same style as the other providers) replaces the colour `.webp`; `logoUrl: /assets/profitroom.svg`.
 - ⬜ Rate limit on the engine: no documented limit; the 15-minute cache keeps calls low. Watch the
   drift workflow and the gateway logs after La Pausa goes live.
 - The API is Profitroom's internal booking-engine API, not a public contract: the drift probe is the
